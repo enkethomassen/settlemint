@@ -22,6 +22,8 @@ import YieldPanel from '@/components/YieldPanel';
 import CashflowTimeline from '@/components/CashflowTimeline';
 import X402Monitor from '@/components/X402Monitor';
 import InsightsFeed from '@/components/InsightsFeed';
+import AgentSettingsPanel from '@/components/AgentSettingsPanel';
+import CashflowForecast from '@/components/CashflowForecast';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
 import { useVault } from '@/hooks/useVault';
@@ -258,7 +260,7 @@ function TestnetBanner() {
 // ─────────────────────────────────────────────────────────────
 export default function AppClient() {
   const { address: walletAddress, isConnected } = useAccount();
-  const { payments, refetch, isLoading } = useVault();
+  const { payments, refetch, isLoading, musdBalance } = useVault();
 
   const [tab, setTab]                         = useState<Tab>('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen]   = useState(false);
@@ -353,7 +355,7 @@ export default function AppClient() {
               <motion.div key={tab}
                 initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.22, ease: EC }}>
-                {tab === 'dashboard' && <DashboardView payments={payments} log={executionLog} setTab={setTab} isLoading={isLoading} />}
+                {tab === 'dashboard' && <DashboardView payments={payments} log={executionLog} setTab={setTab} isLoading={isLoading} musdBalance={parseFloat(musdBalance) || 0} />}
                 {tab === 'vault' && (
                   <div className="max-w-xl space-y-6">
                     <SectionHead title="Vault Management" sub="Deposit BTC collateral and mint MUSD." />
@@ -387,6 +389,7 @@ export default function AppClient() {
                 )}
                 {tab === 'yield' && <YieldPanel />}
                 {tab === 'x402'  && <X402Monitor log={executionLog} stats={paymentStats} />}
+                {tab === 'settings' && <AgentSettingsPanel />}
                 {tab === 'agent' && (
                   <div className="space-y-6">
                     <SectionHead title="Automation Agent" sub="Scheduler runs every minute · executes due payments via contract or x402." />
@@ -438,8 +441,8 @@ function SectionHead({ title, sub }: { title: string; sub?: string }) {
 }
 
 // ── Dashboard View ──────────────────────────────────────────
-function DashboardView({ payments, log, setTab, isLoading }: {
-  payments: any[]; log: ExecutionLogEntry[]; setTab: (t: Tab) => void; isLoading: boolean;
+function DashboardView({ payments, log, setTab, isLoading, musdBalance }: {
+  payments: any[]; log: ExecutionLogEntry[]; setTab: (t: Tab) => void; isLoading: boolean; musdBalance: number;
 }) {
   return (
     <div className="space-y-7">
@@ -454,7 +457,10 @@ function DashboardView({ payments, log, setTab, isLoading }: {
       </div>
 
       <VaultStats />
-      <CashflowTimeline payments={payments} />
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <CashflowTimeline payments={payments} />
+        <CashflowForecast payments={payments} musdBalance={musdBalance} />
+      </div>
       <InsightsFeed />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

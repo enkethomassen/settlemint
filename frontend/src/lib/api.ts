@@ -218,6 +218,29 @@ export interface TransactionTag {
   createdAt: number;
 }
 
+// ─── Agent Settings ───────────────────────────────────────────────────────────
+
+export interface AgentSettings {
+  address: string;
+  mode: 'safe' | 'autopilot';
+  spendingCap: number;
+  spendingUsed: number;
+  spendingReset: number;
+  capRemaining: number;
+  capUsedPct: number;
+}
+
+export const agentApi = {
+  getSettings: (address: string) =>
+    apiFetch<AgentSettings>(`/api/agent/settings/${address}`),
+
+  updateSettings: (address: string, mode?: 'safe' | 'autopilot', spendingCap?: number) =>
+    apiFetch<AgentSettings & { success: boolean }>('/api/agent/settings', {
+      method: 'POST',
+      body: JSON.stringify({ address, mode, spendingCap }),
+    }),
+};
+
 export const walletApi = {
   analyze: (address: string, addressType?: "evm" | "bitcoin", range: "30d" | "90d" | "180d" = "90d") =>
     apiFetch<WalletAnalysis>("/api/wallet/analyze", {

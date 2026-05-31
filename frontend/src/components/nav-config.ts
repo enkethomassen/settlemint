@@ -1,7 +1,7 @@
 import type { ElementType } from 'react';
 import {
   LayoutDashboard, Vault, Plus, List,
-  TrendingUp, Zap, Activity,
+  TrendingUp, Zap, Activity, Settings2,
 } from 'lucide-react';
 import type { Tab } from './types';
 
@@ -28,7 +28,8 @@ export const NAV_GROUPS: {
   {
     label: 'System',
     items: [
-      { id: 'agent', label: 'Agent',             icon: Activity,        tag: 'LIVE' },
+      { id: 'agent',    label: 'Agent',           icon: Activity,    tag: 'LIVE' },
+      { id: 'settings', label: 'Agent Policy',    icon: Settings2,   tag: 'AGENT' },
     ],
   },
 ];
