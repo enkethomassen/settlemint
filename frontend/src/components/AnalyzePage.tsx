@@ -45,14 +45,28 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 const TAG_PRESETS: Array<{ label: string; category: TransactionCategory }> = [
-  { label: 'Bill', category: 'payment' },
-  { label: 'Subscription', category: 'subscription' },
-  { label: 'Invoice', category: 'payment' },
+  // Payments
+  { label: 'Salary', category: 'payment' },
   { label: 'Payroll', category: 'payment' },
+  { label: 'Invoice', category: 'payment' },
+  { label: 'Bill', category: 'payment' },
   { label: 'Rent', category: 'payment' },
   { label: 'Tax', category: 'payment' },
+  { label: 'Vendor', category: 'payment' },
+  { label: 'Infrastructure', category: 'payment' },
+  // Subscriptions / x402
+  { label: 'x402 API', category: 'subscription' },
+  { label: 'Subscription', category: 'subscription' },
   { label: 'Software', category: 'subscription' },
-  { label: 'API', category: 'subscription' },
+  { label: 'SaaS', category: 'subscription' },
+  // Funding
+  { label: 'Grant', category: 'transfer' },
+  { label: 'Hackathon', category: 'transfer' },
+  { label: 'Investment', category: 'transfer' },
+  { label: 'Reward', category: 'transfer' },
+  // DeFi
+  { label: 'Yield', category: 'yield' },
+  { label: 'Swap', category: 'swap' },
 ];
 
 
@@ -192,9 +206,11 @@ function TxRow({ tx, walletAddress, tag, onTagged }: {
       </div>
       <div className="text-right shrink-0">
         <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-          {tx.amount.toFixed(4)} {tx.token}
+          {tx.amountUSD > 0 ? fmtUSD(tx.amountUSD) : tx.amount > 0 ? fmtUSD(0) : <span style={{ color: 'var(--text-muted)' }}>contract call</span>}
         </div>
-        <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{fmtUSD(tx.amountUSD)}</div>
+        <div className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+          {tx.amount > 0 ? `${tx.amount.toFixed(6)} ${tx.token}` : ''}
+        </div>
       </div>
       <TagPopover tx={tx} walletAddress={walletAddress} existingTag={tag}
         onTagged={(t) => onTagged(tx.hash, t)} />

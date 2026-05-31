@@ -26,6 +26,8 @@ import AgentSettingsPanel from '@/components/AgentSettingsPanel';
 import CashflowForecast from '@/components/CashflowForecast';
 import MezoPassport from '@/components/MezoPassport';
 import PolicySetup from '@/components/PolicySetup';
+import PriceTicker from '@/components/PriceTicker';
+import SafeApprovalQueue from '@/components/SafeApprovalQueue';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
 import { useVault } from '@/hooks/useVault';
@@ -454,21 +456,31 @@ function DashboardView({ payments, log, setTab, isLoading, musdBalance }: {
 }) {
   return (
     <div className="space-y-7">
-      <div>
-        <h2 className="font-bold tracking-tight"
-          style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)', letterSpacing: '-0.04em', fontSize: '1.75rem' }}>
-          Treasury Overview
-        </h2>
-        <p className="mt-2" style={{ color: 'var(--text-secondary)', fontSize: '1rem' }}>
-          Bitcoin-backed cashflow operating system
-        </p>
+      {/* Header + live price ticker */}
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="font-bold tracking-tight"
+            style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)', letterSpacing: '-0.04em', fontSize: '1.75rem' }}>
+            Treasury Overview
+          </h2>
+          <p className="mt-1" style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
+            Bitcoin-backed cashflow · Mezo Network
+          </p>
+        </div>
+        <PriceTicker />
       </div>
 
+      {/* Stats from real Mezo wallet data */}
       <VaultStats />
+
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <CashflowTimeline payments={payments} />
         <CashflowForecast payments={payments} musdBalance={musdBalance} />
       </div>
+
+      {/* Safe mode approval queue — predicted upcoming transactions */}
+      <SafeApprovalQueue />
+
       <InsightsFeed />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
