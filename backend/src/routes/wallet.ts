@@ -1,52 +1,144 @@
 /**
  * routes/wallet.ts
- * Wallet analysis API: full transaction history, AI insights, recurring detection.
- * Also handles transaction tagging (user-applied labels).
+ * Wallet analysis API — ACE-Protocol-style pipeline (heuristics + optional LLM).
+ * Supports EVM (Alchemy) and Bitcoin (Esplora) address types.
  */
 
 import { Router, Request, Response } from "express";
 import { ethers } from "ethers";
 import { logger } from "../logger";
-import { analyzeWallet } from "../agents/walletAnalyzerAgent";
-import { upsertTag, getTagsByWallet, deleteTag, buildTagContext } from "../services/tagDb";
+import { scanWallet, getTxs, buildInsights } from "../wallet/pipeline";
+import { summarize } from "../wallet/ai/summary";
+import { walletConfig } from "../wallet/config";
+import { upsertTag, getTagsByWallet, deleteTag } from "../services/tagDb";
 
 const router = Router();
 
-// ─── POST /api/wallet/analyze ─────────────────────────────────────────────────
+// ─── POST /api/wallet/scan ────────────────────────────────────────────────────
+// Fetch, categorize, store, and return transactions + insights for a wallet.
 
-router.post("/analyze", async (req: Request, res: Response) => {
-  const { address, addressType, range = "90d" } = req.body as {
-    address?: string;
-    addressType?: "evm" | "bitcoin";
-    range?: "30d" | "90d" | "180d";
-  };
+router.post("/scan", async (req: Request, res: Response) => {
+  const { address, chain } = req.body as { address?: string; chain?: string };
 
-  if (!address) {
-    return res.status(400).json({ error: "address is required" });
+  if (!address) return res.status(400).json({ error: "address is required" });
+
+  // Auto-detect chain if omitted
+  let detectedChain = chain as "evm" | "btc" | undefined;
+  if (!detectedChain) {
+    if (/^0x[a-fA-F0-9]{40}$/.test(address)) detectedChain = "evm";
+    else if (
+      /^(1|3)[a-zA-HJ-NP-Z0-9]{25,34}$/.test(address) ||
+      /^bc1[a-zA-HJ-NP-Z0-9]{6,87}$/.test(address)
+    ) detectedChain = "btc";
+    else return res.status(400).json({ error: "Cannot detect chain. Provide chain: 'evm' | 'btc'" });
   }
 
-  // Auto-detect type if not provided
-  let type = addressType;
-  if (!type) {
-    if (/^0x[a-fA-F0-9]{40}$/.test(address)) type = "evm";
-    else if (/^(1|3)[a-zA-HJ-NP-Z0-9]{25,34}$/.test(address) || /^bc1[a-zA-HJ-NP-Z0-9]{6,87}$/.test(address)) type = "bitcoin";
-    else return res.status(400).json({ error: "Cannot detect address type. Provide addressType: 'evm' | 'bitcoin'" });
-  }
-
-  if (type === "evm" && !ethers.isAddress(address)) {
+  if (detectedChain === "evm" && !ethers.isAddress(address)) {
     return res.status(400).json({ error: "Invalid EVM address" });
   }
 
-  if (!["30d", "90d", "180d"].includes(range)) {
-    return res.status(400).json({ error: "range must be 30d, 90d, or 180d" });
+  try {
+    logger.info("Wallet scan started", { address, chain: detectedChain });
+    const result = await scanWallet(address, detectedChain);
+    logger.info("Wallet scan complete", { address, txCount: result.transactions.length });
+    res.json(result);
+  } catch (err: any) {
+    logger.error("Wallet scan failed", { address, error: err.message });
+    res.status(500).json({ error: err.message || "Scan failed" });
+  }
+});
+
+// ─── GET /api/wallet/transactions/:address ────────────────────────────────────
+// Return categorized transactions from the local store (no re-fetch).
+
+router.get("/transactions/:address", (req: Request, res: Response) => {
+  const { address } = req.params;
+  const limit = parseInt(req.query.limit as string) || 500;
+  try {
+    const transactions = getTxs(address, limit);
+    res.json({ address, count: transactions.length, transactions });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/wallet/insights/:address ───────────────────────────────────────
+// Return dashboard aggregates from the local store.
+
+router.get("/insights/:address", (req: Request, res: Response) => {
+  const { address } = req.params;
+  const chain = (req.query.chain as string) || "evm";
+
+  if (chain !== "evm" && chain !== "btc") {
+    return res.status(400).json({ error: "chain query param must be 'evm' or 'btc'" });
   }
 
   try {
-    logger.info("Wallet analysis started", { address, type, range });
-    const tagContext = buildTagContext(address);
-    const analysis = await analyzeWallet(address, type, range, tagContext);
-    logger.info("Wallet analysis complete", { address, txCount: analysis.transactions.length });
-    res.json(analysis);
+    const txs = getTxs(address, 1000);
+    const insights = buildInsights(address, chain as "evm" | "btc", txs);
+    res.json(insights);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/wallet/summary/:address ────────────────────────────────────────
+// Return a natural-language treasury summary.
+
+router.get("/summary/:address", async (req: Request, res: Response) => {
+  const { address } = req.params;
+  const chain = (req.query.chain as string) || "evm";
+
+  if (chain !== "evm" && chain !== "btc") {
+    return res.status(400).json({ error: "chain query param must be 'evm' or 'btc'" });
+  }
+
+  try {
+    const txs = getTxs(address, 1000);
+    const insights = buildInsights(address, chain as "evm" | "btc", txs);
+    const summary = await summarize(insights);
+    res.json({ address, summary, insights });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/wallet/analyze ─────────────────────────────────────────────────
+// Alias for /scan that also accepts the old addressType param for compatibility.
+
+router.post("/analyze", async (req: Request, res: Response) => {
+  const { address, addressType, chain } = req.body as {
+    address?: string;
+    addressType?: "evm" | "bitcoin";
+    chain?: "evm" | "btc";
+  };
+
+  if (!address) return res.status(400).json({ error: "address is required" });
+
+  // Map legacy "bitcoin" to "btc"
+  let resolvedChain: "evm" | "btc" | undefined = chain;
+  if (!resolvedChain && addressType) {
+    resolvedChain = addressType === "bitcoin" ? "btc" : "evm";
+  }
+  if (!resolvedChain) {
+    if (/^0x[a-fA-F0-9]{40}$/.test(address)) resolvedChain = "evm";
+    else if (/^(1|3)[a-zA-HJ-NP-Z0-9]{25,34}$/.test(address) || /^bc1[a-zA-HJ-NP-Z0-9]{6,87}$/.test(address))
+      resolvedChain = "btc";
+    else return res.status(400).json({ error: "Cannot detect chain type. Provide chain or addressType." });
+  }
+
+  try {
+    logger.info("Wallet analysis started", { address, chain: resolvedChain });
+    const result = await scanWallet(address, resolvedChain);
+    logger.info("Wallet analysis complete", { address, txCount: result.transactions.length });
+    // Return in the legacy shape the frontend expects
+    res.json({
+      address,
+      addressType: resolvedChain === "btc" ? "bitcoin" : "evm",
+      transactions: result.transactions,
+      insights: result.insights,
+      aiProvider: walletConfig.ai.provider,
+    });
   } catch (err: any) {
     logger.error("Wallet analysis failed", { address, error: err.message });
     res.status(500).json({ error: err.message || "Analysis failed" });

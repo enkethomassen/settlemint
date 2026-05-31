@@ -55,24 +55,34 @@ async function bootstrap() {
   // Root
   app.get("/", (_req, res) => {
     res.json({
-      name: "MUSD Paycheck Vault Agent",
+      name: "BitStream Backend Agent",
       version: "1.0.0",
-      description: "Bitcoin-native cashflow automation on Mezo",
+      description: "Bitcoin-native cashflow automation on Mezo with ACE-style wallet intelligence",
       mode: process.env.VAULT_CONTRACT_ADDRESS ? "live" : "demo",
+      walletIntelligence: {
+        aiProvider: process.env.AI_PROVIDER ?? "none",
+        evmSource: process.env.ALCHEMY_URL ? "alchemy" : "blockscout-public",
+        btcSource: process.env.BTC_ESPLORA_BASE ?? "mempool.space",
+      },
       endpoints: [
         "GET  /api/health",
+        // Wallet intelligence (ACE-style pipeline)
+        "POST /api/wallet/scan                — fetch + categorize + store, return txs + insights",
+        "POST /api/wallet/analyze             — alias for /scan (legacy compatibility)",
+        "GET  /api/wallet/transactions/:addr  — categorized list from local store",
+        "GET  /api/wallet/insights/:addr      — dashboard aggregates (?chain=evm|btc)",
+        "GET  /api/wallet/summary/:addr       — natural-language treasury summary",
+        "POST /api/wallet/tag                 — user-label a transaction",
+        "GET  /api/wallet/tags                — tags for a wallet (?address=)",
+        "DELETE /api/wallet/tag/:txHash       — remove a tag",
+        // Vault / payments
         "GET  /api/vault/:address",
         "POST /api/users/register",
-        "GET  /api/users",
         "GET  /api/scheduler/status",
         "POST /api/scheduler/trigger",
         "GET  /api/payments/log",
         "GET  /api/payments/stats",
         "POST /api/x402/simulate",
-        "POST /api/wallet/analyze",
-        "POST /api/wallet/tag",
-        "GET  /api/wallet/tags",
-        "DELETE /api/wallet/tag/:txHash",
         "GET  /api/premium/forecast",
         "GET  /api/premium/insights",
         "POST /api/treasury/analyze",
@@ -82,6 +92,16 @@ async function bootstrap() {
         "GET  /api/whatsapp/webhook",
         "POST /api/whatsapp/webhook",
       ],
+    });
+  });
+
+  // Health check
+  app.get("/api/health", (_req, res) => {
+    res.json({
+      status: "ok",
+      aiProvider: process.env.AI_PROVIDER ?? "none",
+      vaultMode: process.env.VAULT_CONTRACT_ADDRESS ? "live" : "demo",
+      evmSource: process.env.ALCHEMY_URL ? "alchemy" : "blockscout-public",
     });
   });
 

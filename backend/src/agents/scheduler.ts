@@ -1,12 +1,13 @@
 /**
- * scheduler.ts
- * Cron-based payment scheduler — runs every minute.
- * Fetches all registered users, checks due payments, and triggers execution.
+ * scheduler.ts — Payment Scheduler with Safe/Autopilot mode support
  *
- * Architecture Layer: AUTOMATION LAYER (Backend Agent)
+ * Runs every minute. For each registered user's due payments:
+ *   - Autopilot mode: auto-execute if within monthly spending cap
+ *   - Safe mode:      send approval request to user's bot(s) and wait
  */
 
 import cron from "node-cron";
+import { ethers } from "ethers";
 import { logger } from "../logger";
 import {
   getUserPayments,
@@ -16,16 +17,30 @@ import {
   updateMockPaymentLastExecuted,
 } from "../services/vaultService";
 import { executePayment } from "./paymentExecutor";
+import {
+  getAutopilotUsersForAddress,
+  getAllSafeUsers,
+  canAutopilotSpend,
+  recordSpending,
+  createPendingApproval,
+  BotUser,
+} from "../services/botUserDb";
+import {
+  sendSafeApprovalRequest,
+  sendAutopilotNotification,
+  sendCapExceededAlert,
+} from "../bots/telegramBot";
+import {
+  sendWaSafeApprovalRequest,
+  sendWaAutopilotNotification,
+  sendWaCapExceeded,
+} from "../bots/whatsappBot";
 
-// Track registered users (in production: load from DB)
 const registeredUsers = new Set<string>();
 
 export function registerUser(address: string) {
   registeredUsers.add(address.toLowerCase());
-  // Seed mock data in demo mode
-  if (!process.env.VAULT_CONTRACT_ADDRESS) {
-    seedMockUser(address);
-  }
+  if (!process.env.VAULT_CONTRACT_ADDRESS) seedMockUser(address);
   logger.info("User registered with scheduler", { address });
 }
 
@@ -33,7 +48,6 @@ export function getRegisteredUsers(): string[] {
   return Array.from(registeredUsers);
 }
 
-// Scheduler state
 let schedulerRunning = false;
 let lastRun: Date | null = null;
 let totalChecked = 0;
@@ -49,24 +63,84 @@ export function getSchedulerStatus() {
   };
 }
 
-/**
- * Core scheduler logic — checks all users' payments and executes due ones.
- */
-async function runSchedulerCycle() {
-  if (schedulerRunning) {
-    logger.debug("Scheduler cycle already running — skipping");
-    return;
+async function processPayment(
+  userAddress: string,
+  paymentId: number,
+  amountMusd: number,
+  recipient: string,
+  botUsers: BotUser[],
+  rawPayment: any
+): Promise<void> {
+  // Check each bot user's mode
+  const autopilotUsers = botUsers.filter((u) => u.mode === "autopilot");
+  const safeUsers = botUsers.filter((u) => u.mode === "safe");
+
+  // ── AUTOPILOT PATH ──────────────────────────────────────────────────────────
+  for (const user of autopilotUsers) {
+    if (canAutopilotSpend(user, amountMusd)) {
+      logger.info("Autopilot: executing payment", { userAddress, paymentId, amountMusd });
+
+      const result = await executePayment(userAddress, paymentId, rawPayment);
+
+      if (result.success) {
+        recordSpending(user.chatId, user.platform, amountMusd);
+        const updatedUsed = user.spendingUsed + amountMusd;
+
+        // Notify user
+        if (user.platform === "telegram") {
+          sendAutopilotNotification(
+            user.chatId, amountMusd, recipient, result.txHash ?? "mock",
+            updatedUsed, user.spendingCap
+          ).catch(() => {});
+        } else if (user.platform === "whatsapp") {
+          sendWaAutopilotNotification(
+            user.chatId, amountMusd, recipient, result.txHash ?? "mock",
+            updatedUsed, user.spendingCap
+          ).catch(() => {});
+        }
+
+        totalExecuted++;
+        updateMockPaymentLastExecuted(userAddress, paymentId, Math.floor(Date.now() / 1000));
+      } else {
+        logger.error("Autopilot payment failed", { userAddress, paymentId, error: result.error });
+      }
+    } else {
+      // Cap exceeded — alert user
+      logger.warn("Autopilot cap exceeded", { userAddress, paymentId, amountMusd, cap: user.spendingCap, used: user.spendingUsed });
+      if (user.platform === "telegram") {
+        sendCapExceededAlert(user.chatId, amountMusd, user.spendingCap, user.spendingUsed).catch(() => {});
+      } else if (user.platform === "whatsapp") {
+        sendWaCapExceeded(user.chatId, amountMusd, user.spendingCap, user.spendingUsed).catch(() => {});
+      }
+    }
   }
 
+  // ── SAFE MODE PATH ──────────────────────────────────────────────────────────
+  for (const user of safeUsers) {
+    const approvalId = createPendingApproval(
+      user.chatId, user.platform, userAddress, paymentId, amountMusd, recipient
+    );
+
+    if (user.platform === "telegram") {
+      sendSafeApprovalRequest({
+        chatId: user.chatId, approvalId, amountMusd, recipient, paymentId,
+      }).catch(() => {});
+    } else if (user.platform === "whatsapp") {
+      sendWaSafeApprovalRequest(user.chatId, approvalId, amountMusd, recipient).catch(() => {});
+    }
+
+    logger.info("Safe mode: approval request sent", { userAddress, paymentId, chatId: user.chatId });
+  }
+}
+
+async function runSchedulerCycle() {
+  if (schedulerRunning) return;
   schedulerRunning = true;
   lastRun = new Date();
 
-  const users = Array.from(registeredUsers);
-
-  if (users.length === 0) {
-    // In demo mode, load mock users
-    const mockUsers = getAllMockUsers();
-    mockUsers.forEach((u) => registeredUsers.add(u));
+  // Load mock users in demo mode
+  if (registeredUsers.size === 0) {
+    getAllMockUsers().forEach((u) => registeredUsers.add(u));
   }
 
   const allUsers = Array.from(registeredUsers);
@@ -75,7 +149,7 @@ async function runSchedulerCycle() {
     return;
   }
 
-  logger.info(`Scheduler cycle started`, { users: allUsers.length });
+  logger.debug(`Scheduler cycle`, { users: allUsers.length });
 
   for (const userAddress of allUsers) {
     try {
@@ -86,60 +160,48 @@ async function runSchedulerCycle() {
 
       totalChecked += payments.length;
 
+      // Halt if collateral ratio is critical
       const collateralRatio = Number(vaultInfo.collateralRatio);
       if (collateralRatio > 0 && collateralRatio < 150) {
-        logger.error("Collateral ratio below 150% — pausing scheduled payments", {
-          user: userAddress,
-          collateralRatio,
-        });
+        logger.error("Collateral ratio critical — pausing payments", { userAddress, collateralRatio });
         continue;
       }
 
+      // Get bot users for this address (to know their mode)
+      const tgAutopilot = getAutopilotUsersForAddress(userAddress);
+      const safeUsers = getAllSafeUsers().filter(
+        (u) => u.mezoAddress?.toLowerCase() === userAddress.toLowerCase()
+      );
+      const botUsers = [...tgAutopilot, ...safeUsers];
+
       for (let i = 0; i < payments.length; i++) {
         const payment = payments[i];
-
         if (!payment.isActive) continue;
 
-        // Check if due
         const now = Math.floor(Date.now() / 1000);
         const lastExec = Number(payment.lastExecuted);
         const interval = Number(payment.interval);
         const isDue = lastExec === 0 || now >= lastExec + interval;
+        if (!isDue) continue;
 
-        if (!isDue) {
-          const nextRun = new Date((lastExec + interval) * 1000);
-          logger.debug("Payment not due", {
-            user: userAddress,
-            paymentId: i,
-            nextRun: nextRun.toISOString(),
-          });
-          continue;
-        }
-
-        // Check MUSD balance covers this payment
         if (vaultInfo.musdBalance < payment.amount) {
-          logger.warn("Insufficient MUSD — skipping payment", {
-            user: userAddress,
-            paymentId: i,
-            balance: vaultInfo.musdBalance.toString(),
-            required: payment.amount.toString(),
-          });
+          logger.warn("Insufficient MUSD — skipping", { userAddress, paymentId: i });
           continue;
         }
 
-        // Execute
-        logger.info("Payment due — executing", {
-          user: userAddress,
-          paymentId: i,
-          isX402: payment.isX402,
-          endpoint: payment.isX402 ? payment.endpoint : payment.recipient,
-        });
+        const amountMusd = Number(ethers.formatEther(payment.amount));
+        const recipient = payment.isX402 ? payment.endpoint : payment.recipient;
 
-        const result = await executePayment(userAddress, i, payment);
-        if (result.success) {
-          totalExecuted++;
-          // Persist lastExecuted update in mock state
-          updateMockPaymentLastExecuted(userAddress, i, Math.floor(Date.now() / 1000));
+        if (botUsers.length > 0) {
+          // Route through bot safe/autopilot logic
+          await processPayment(userAddress, i, amountMusd, recipient, botUsers, payment);
+        } else {
+          // No bot registered for this user — execute directly (legacy behavior)
+          const result = await executePayment(userAddress, i, payment);
+          if (result.success) {
+            totalExecuted++;
+            updateMockPaymentLastExecuted(userAddress, i, Math.floor(Date.now() / 1000));
+          }
         }
       }
     } catch (err: any) {
@@ -147,28 +209,17 @@ async function runSchedulerCycle() {
     }
   }
 
-  logger.info(`Scheduler cycle complete`, {
-    users: allUsers.length,
-    checked: totalChecked,
-    executed: totalExecuted,
-  });
-
   schedulerRunning = false;
 }
 
-/**
- * Start the scheduler. Runs every minute by default.
- * In demo mode can be triggered via API for instant demo.
- */
 export function startScheduler(intervalCron = "* * * * *") {
   logger.info("Starting payment scheduler", { cron: intervalCron });
 
-  // Seed demo users immediately (requires DEMO_USER_ADDRESS env var in demo mode)
   if (!process.env.VAULT_CONTRACT_ADDRESS) {
     const demoUser = process.env.DEMO_USER_ADDRESS;
     if (demoUser) {
       registerUser(demoUser);
-      logger.info("Demo mode: seeded user", { address: demoUser });
+      logger.info("Demo: seeded user", { address: demoUser });
     } else {
       logger.warn("Demo mode active but DEMO_USER_ADDRESS is not set — no users seeded. Register via POST /api/users/register");
     }
@@ -186,7 +237,6 @@ export function startScheduler(intervalCron = "* * * * *") {
   logger.info("Scheduler started ✅");
 }
 
-/** Manual trigger for demos */
 export async function triggerNow() {
   return runSchedulerCycle();
 }

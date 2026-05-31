@@ -13,3 +13,5 @@ Thumbs.db
 node_modules
 .venv
 # .env # Removed by Orchids to allow .env files
+data/
+*.db

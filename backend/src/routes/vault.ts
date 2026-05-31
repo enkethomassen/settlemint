@@ -206,6 +206,11 @@ router.get("/health", (_req, res) => {
   res.json({
     status: "ok",
     mode: process.env.VAULT_CONTRACT_ADDRESS ? "live" : "demo",
+    walletIntelligence: {
+      aiProvider: process.env.AI_PROVIDER ?? "none",
+      evmSource: process.env.ALCHEMY_URL ? "alchemy" : "blockscout-public",
+      btcSource: process.env.BTC_ESPLORA_BASE ?? "mempool.space",
+    },
     timestamp: new Date().toISOString(),
   });
 });
