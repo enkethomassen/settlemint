@@ -6,7 +6,7 @@ export async function GET() {
     mode: "demo",
     walletIntelligence: {
       aiProvider: process.env.OPENAI_API_KEY ? "openai" : "heuristic",
-      evmSource: "blockscout-public",
+      evmSource: "mezo-blockscout",
       btcSource: "mempool.space",
     },
     timestamp: new Date().toISOString(),

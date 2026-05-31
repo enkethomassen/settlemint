@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 // Lightweight wallet analysis — proxies to Blockscout/mempool.space, no backend needed
 
-const BLOCKSCOUT_BASE = process.env.BLOCKSCOUT_BASE ?? "https://eth.blockscout.com";
+const BLOCKSCOUT_BASE = process.env.BLOCKSCOUT_BASE ?? "https://api.explorer.mezo.org";
 
 async function analyzeEVM(address: string) {
   const [balRes, txRes] = await Promise.all([

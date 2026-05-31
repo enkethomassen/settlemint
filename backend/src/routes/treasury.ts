@@ -15,8 +15,8 @@ const router = Router();
 
 const OPENAI_KEY = process.env.OPENAI_API_KEY || "";
 
-// Blockscout public API — free, no key, no rate-limit issues
-const BLOCKSCOUT_BASE = process.env.BLOCKSCOUT_BASE ?? "https://eth.blockscout.com";
+// Mezo Matsnet Blockscout — the primary chain for Settlemint/BitStream
+const BLOCKSCOUT_BASE = process.env.BLOCKSCOUT_BASE ?? "https://api.explorer.mezo.org";
 
 // ─── EVM proxy via Blockscout (replaces deprecated Etherscan v1) ──────────────
 

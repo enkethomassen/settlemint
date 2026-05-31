@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const BLOCKSCOUT_BASE = process.env.BLOCKSCOUT_BASE ?? "https://eth.blockscout.com";
+const BLOCKSCOUT_BASE = process.env.BLOCKSCOUT_BASE ?? "https://api.explorer.mezo.org";
 
 export async function GET(
   _req: NextRequest,

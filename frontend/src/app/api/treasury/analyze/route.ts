@@ -65,18 +65,18 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const ticker = snapshot.type === "btc" ? "BTC" : "ETH";
-    const systemPrompt = `You are a Bitcoin treasury analyst AI for Settlemint — a Bitcoin-native cashflow automation system built on the Mezo network.
-Your job is to analyze on-chain treasury data and provide concise, actionable insights.
+    const ticker = snapshot.type === "btc" ? "BTC" : "MUSD";
+    const systemPrompt = `You are a Bitcoin treasury analyst AI for BitStream — a Bitcoin-native cashflow automation system built on the Mezo network (Bitcoin L2, chainId 31611).
+Your job is to analyze on-chain Mezo treasury data and provide concise, actionable insights.
 Respond with a JSON object containing:
 - "summary": one sentence treasury health summary (max 25 words)
 - "insights": array of 3-4 bullet insights (each max 20 words, start with an emoji)
 - "risks": array of 1-2 identified risks or concerns (max 20 words each)
-- "recommendation": one actionable recommendation for automating cashflow via Settlemint (max 30 words)
+- "recommendation": one actionable recommendation for automating cashflow via BitStream on Mezo (max 30 words)
 - "health": "healthy" | "caution" | "critical"`;
 
-    const userPrompt = `Analyze this treasury:
-Address: ${snapshot.address} (${snapshot.type === "btc" ? "Bitcoin" : "EVM/Ethereum"})
+    const userPrompt = `Analyze this Mezo treasury:
+Address: ${snapshot.address} (${snapshot.type === "btc" ? "Bitcoin" : "Mezo Network / MUSD"})
 Balance: ${snapshot.balance.toFixed(6)} ${ticker}
 Monthly Burn Rate: ${snapshot.monthlyBurn > 0 ? snapshot.monthlyBurn.toFixed(6) : "0"} ${ticker}
 Runway: ${snapshot.runway ? `${snapshot.runway.toFixed(1)} months` : "Infinite (no outflows)"}

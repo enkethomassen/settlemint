@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const BLOCKSCOUT_BASE = process.env.BLOCKSCOUT_BASE ?? "https://eth.blockscout.com";
+// Mezo Matsnet is the primary chain for this product.
+// Fallback to Ethereum mainnet if BLOCKSCOUT_BASE is overridden.
+const BLOCKSCOUT_BASE = process.env.BLOCKSCOUT_BASE ?? "https://api.explorer.mezo.org";
 
 export async function GET(
   _req: NextRequest,
