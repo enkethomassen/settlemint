@@ -1,4 +1,6 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+// Empty string = relative URLs (works on Vercel via Next.js API routes).
+// Set NEXT_PUBLIC_API_URL=http://localhost:4000 to use the local Express backend.
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
 export interface VaultData {
   address: string;

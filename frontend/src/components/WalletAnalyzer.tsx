@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { walletApi } from "@/lib/api";
 
 const E: [number, number, number, number] = [0.16, 1, 0.3, 1];
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+const API = process.env.NEXT_PUBLIC_API_URL || "";
 
 // ── Detect address type ──────────────────────────────────────
 function detectType(addr: string): "btc" | "evm" | null {

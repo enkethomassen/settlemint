@@ -3,5 +3,9 @@
   "framework": "nextjs",
   "installCommand": "npx pnpm@9.15.9 install --no-frozen-lockfile",
   "buildCommand": "npx pnpm@9.15.9 run build",
-  "outputDirectory": ".next"
+  "outputDirectory": ".next",
+  "env": {
+    "NEXT_PUBLIC_API_URL": "",
+    "NEXT_PUBLIC_DEMO_MODE": "true"
+  }
 }
