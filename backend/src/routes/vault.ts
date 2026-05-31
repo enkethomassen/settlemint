@@ -183,6 +183,7 @@ router.get("/payments/stats", (_req: Request, res: Response) => {
 });
 
 // ─── x402 Simulation ────────────────────────────────────────────────────────
+// Probes the real URL first to detect 402 requirements, then mocks the payment.
 
 router.post("/x402/simulate", async (req: Request, res: Response) => {
   const { url, walletAddress, amount } = req.body;
@@ -191,13 +192,71 @@ router.post("/x402/simulate", async (req: Request, res: Response) => {
     return res.status(400).json({ error: "url, walletAddress, and amount are required" });
   }
 
+  // Validate URL
+  let parsed: URL;
   try {
-    const { simulateX402Payment } = await import("../x402/client");
-    const result = await simulateX402Payment(url, walletAddress, amount);
-    res.json(result);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    parsed = new URL(url);
+    if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("bad protocol");
+  } catch {
+    return res.status(400).json({ error: `Invalid URL: ${url}` });
   }
+
+  // Step 1: Probe the real endpoint (5s timeout)
+  let probeStatus = 0;
+  let paymentRequirements: any = null;
+  let probeError = "";
+
+  try {
+    const probe = await fetch(url, {
+      method: "GET",
+      headers: { "Accept": "application/json" },
+      signal: AbortSignal.timeout(5000),
+    });
+    probeStatus = probe.status;
+
+    if (probe.status === 402) {
+      try { paymentRequirements = await probe.json(); } catch {}
+    }
+  } catch (err: any) {
+    probeError = err.message ?? "Network error";
+  }
+
+  // If we couldn't reach the endpoint at all, return a clear error
+  if (probeError && probeStatus === 0) {
+    return res.json({
+      success: false,
+      endpoint: url,
+      timestamp: Date.now(),
+      error: `Cannot reach endpoint: ${probeError}. Check that the URL is correct and publicly accessible.`,
+      probe: { reachable: false, error: probeError },
+    });
+  }
+
+  // If endpoint returns 200 without 402, it's not an x402 endpoint
+  if (probeStatus !== 402 && probeStatus >= 200 && probeStatus < 300) {
+    return res.json({
+      success: true,
+      endpoint: url,
+      timestamp: Date.now(),
+      statusCode: probeStatus,
+      probe: { reachable: true, status: probeStatus, isX402: false },
+      data: { message: `Endpoint returned ${probeStatus} without requiring payment. It may not be an x402-gated resource, or it's a gateway/router — try a specific path (e.g. ${url}/api/resource).` },
+    });
+  }
+
+  // Step 2: Real 402 received — simulate the payment (demo MUSD response)
+  const { simulateX402Payment } = await import("../x402/client");
+  const result = await simulateX402Payment(url, walletAddress, amount);
+
+  return res.json({
+    ...result,
+    probe: {
+      reachable: true,
+      status: probeStatus,
+      isX402: probeStatus === 402,
+      paymentRequirements,
+    },
+  });
 });
 
 // ─── Health ──────────────────────────────────────────────────────────────────

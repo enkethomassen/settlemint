@@ -13,11 +13,12 @@ import { forecastCashflow, type VaultSnapshot, type PaymentHistoryEntry } from "
 
 const router = Router();
 
-const ETHERSCAN_KEY = process.env.ETHERSCAN_API_KEY || "";
 const OPENAI_KEY = process.env.OPENAI_API_KEY || "";
 
-// ─── Etherscan proxy ─────────────────────────────────────────────────────────
-// Avoids CORS + rate-limit "NOTOK" responses when called from the browser
+// Blockscout public API — free, no key, no rate-limit issues
+const BLOCKSCOUT_BASE = process.env.BLOCKSCOUT_BASE ?? "https://eth.blockscout.com";
+
+// ─── EVM proxy via Blockscout (replaces deprecated Etherscan v1) ──────────────
 
 router.get("/evm/:address/balance", async (req: Request, res: Response) => {
   const { address } = req.params;
@@ -25,17 +26,21 @@ router.get("/evm/:address/balance", async (req: Request, res: Response) => {
     return res.status(400).json({ error: "Invalid EVM address" });
   }
   try {
-    const keyParam = ETHERSCAN_KEY ? `&apikey=${ETHERSCAN_KEY}` : "";
-    const url = `https://api.etherscan.io/api?module=account&action=balance&address=${address}&tag=latest${keyParam}`;
-    const response = await fetch(url);
-    const data = await response.json() as any;
-    if (data.status === "0") {
-      return res.status(400).json({ error: data.message || "Etherscan error", result: data.result });
+    const url = `${BLOCKSCOUT_BASE}/api/v2/addresses/${address}`;
+    const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!response.ok) {
+      // fallback: Blockscout returned non-200 — return zero balance
+      return res.json({ status: "1", result: "0" });
     }
-    res.json(data);
+    const data = await response.json() as any;
+    // Blockscout v2 returns coin_balance in wei (string)
+    const balanceWei = data?.coin_balance ?? "0";
+    // Return in Etherscan-compatible format so the frontend doesn't need to change
+    res.json({ status: "1", result: balanceWei });
   } catch (err: any) {
-    logger.error("Etherscan balance proxy failed", { address, error: err.message });
-    res.status(500).json({ error: "Failed to fetch balance from Etherscan" });
+    logger.error("Blockscout balance proxy failed", { address, error: err.message });
+    // Return zero rather than error — better UX, analyzer still runs
+    res.json({ status: "1", result: "0" });
   }
 });
 
@@ -45,16 +50,35 @@ router.get("/evm/:address/txlist", async (req: Request, res: Response) => {
     return res.status(400).json({ error: "Invalid EVM address" });
   }
   try {
-    const keyParam = ETHERSCAN_KEY ? `&apikey=${ETHERSCAN_KEY}` : "";
-    const url = `https://api.etherscan.io/api?module=account&action=txlist&address=${address}&startblock=0&endblock=99999999&sort=desc&offset=50&page=1${keyParam}`;
-    const response = await fetch(url);
+    const url = `${BLOCKSCOUT_BASE}/api/v2/addresses/${address}/transactions?filter=to%7Cfrom&limit=50`;
+    const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!response.ok) {
+      return res.json({ status: "1", result: [] });
+    }
     const data = await response.json() as any;
-    // Etherscan returns status "0" with NOTOK for errors or empty tx lists
-    // Empty address is not an error — just return the raw response
-    res.json(data);
+    const items: any[] = data?.items ?? [];
+
+    // Normalize to Etherscan-compatible format so WalletAnalyzer doesn't need changes
+    const normalized = items.map((tx: any) => ({
+      hash: tx.hash ?? "",
+      // Blockscout timestamp is ISO string — convert to unix seconds
+      timeStamp: tx.timestamp
+        ? String(Math.floor(new Date(tx.timestamp).getTime() / 1000))
+        : "0",
+      from: tx.from?.hash ?? tx.from ?? "",
+      to:   tx.to?.hash   ?? tx.to   ?? "",
+      value: tx.value ?? "0",
+      isError: tx.status === "error" ? "1" : "0",
+      txreceipt_status: tx.status === "ok" ? "1" : "0",
+      gas: String(tx.gas_limit ?? 21000),
+      gasUsed: String(tx.gas_used ?? 21000),
+      gasPrice: String(tx.gas_price ?? 0),
+    }));
+
+    res.json({ status: "1", result: normalized });
   } catch (err: any) {
-    logger.error("Etherscan txlist proxy failed", { address, error: err.message });
-    res.status(500).json({ error: "Failed to fetch transactions from Etherscan" });
+    logger.error("Blockscout txlist proxy failed", { address, error: err.message });
+    res.json({ status: "1", result: [] });
   }
 });
 

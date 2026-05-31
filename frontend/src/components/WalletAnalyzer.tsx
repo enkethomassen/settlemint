@@ -76,13 +76,18 @@ async function analyzeEVM(addr: string) {
   const balData = await balRes.json() as any;
   const txData = await txRes.json() as any;
 
-  // status "0" with result "0x0" means zero balance — not an error
-  if (balData.status === "0" && balData.result !== "0") {
+  // Backend now always returns status "1" via Blockscout; old Etherscan NOTOK guard kept for safety
+  if (balData.status === "0" && balData.result !== "0" && balData.result !== "0x0") {
     throw new Error(balData.message || "Could not fetch EVM balance.");
   }
 
-  const balance = parseFloat(balData.result || "0") / 1e18;
-  // txData.result is an array on success, or "0x" / error string on fail
+  // result is wei as a decimal string (from Blockscout) or hex "0x0" (legacy)
+  const rawBalance = balData.result || "0";
+  const balance = rawBalance.startsWith("0x")
+    ? parseInt(rawBalance, 16) / 1e18
+    : parseFloat(rawBalance) / 1e18;
+
+  // txData.result is always an array now (Blockscout normalised)
   const txs = Array.isArray(txData.result) ? txData.result : [];
 
   const cutoff = Math.floor(Date.now() / 1000) - 90 * 86400;
