@@ -13,7 +13,6 @@ export async function GET(
   try {
     const response = await fetch(`${BLOCKSCOUT_BASE}/api/v2/addresses/${address}`, {
       signal: AbortSignal.timeout(8000),
-      next: { revalidate: 30 },
     });
     if (!response.ok) {
       return NextResponse.json({ status: "1", result: "0" });

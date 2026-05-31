@@ -50,7 +50,8 @@ router.get("/evm/:address/txlist", async (req: Request, res: Response) => {
     return res.status(400).json({ error: "Invalid EVM address" });
   }
   try {
-    const url = `${BLOCKSCOUT_BASE}/api/v2/addresses/${address}/transactions?filter=to%7Cfrom&limit=50`;
+    // No filter/limit params — Blockscout v2 rejects them and returns empty results.
+    const url = `${BLOCKSCOUT_BASE}/api/v2/addresses/${address}/transactions`;
     const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
     if (!response.ok) {
       return res.json({ status: "1", result: [] });

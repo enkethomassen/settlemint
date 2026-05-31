@@ -11,10 +11,11 @@ export async function GET(
     return NextResponse.json({ error: "Invalid EVM address" }, { status: 400 });
   }
   try {
-    const url = `${BLOCKSCOUT_BASE}/api/v2/addresses/${address}/transactions?filter=to%7Cfrom&limit=50`;
+    // No filter/limit params — Blockscout v2 doesn't accept them and returns errors.
+    // Default page returns 50 transactions (both in and out).
+    const url = `${BLOCKSCOUT_BASE}/api/v2/addresses/${address}/transactions`;
     const response = await fetch(url, {
       signal: AbortSignal.timeout(10000),
-      next: { revalidate: 30 },
     });
     if (!response.ok) {
       return NextResponse.json({ status: "1", result: [] });

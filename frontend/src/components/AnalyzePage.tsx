@@ -8,7 +8,8 @@ import {
 import { walletApi, type TransactionCategory, type WalletAnalysis, type WalletTransaction, type TransactionTag } from '@/lib/api';
 
 const E: [number,number,number,number] = [0.16, 1, 0.3, 1];
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+const _rawUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
+const API = !_rawUrl || /localhost|127\.0\.0\.1/.test(_rawUrl) ? "" : _rawUrl;
 
 type RangeOption = '30d' | '90d' | '180d';
 type TabId = 'transactions' | 'recurring' | 'insights' | 'tags';
