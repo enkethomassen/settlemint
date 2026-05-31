@@ -25,6 +25,7 @@ import InsightsFeed from '@/components/InsightsFeed';
 import AgentSettingsPanel from '@/components/AgentSettingsPanel';
 import CashflowForecast from '@/components/CashflowForecast';
 import MezoPassport from '@/components/MezoPassport';
+import PolicySetup from '@/components/PolicySetup';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
 import { useVault } from '@/hooks/useVault';
@@ -390,6 +391,7 @@ export default function AppClient() {
                 )}
                 {tab === 'yield' && <YieldPanel />}
                 {tab === 'x402'  && <X402Monitor log={executionLog} stats={paymentStats} />}
+                {tab === 'policies' && <PolicySetup />}
                 {tab === 'settings' && (
                   <div className="space-y-6 max-w-3xl">
                     <AgentSettingsPanel />
