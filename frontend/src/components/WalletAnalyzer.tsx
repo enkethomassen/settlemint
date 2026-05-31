@@ -1,6 +1,7 @@
 "use client";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { walletApi } from "@/lib/api";
 
 const E: [number, number, number, number] = [0.16, 1, 0.3, 1];
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
@@ -51,6 +52,7 @@ async function analyzeBTC(addr: string) {
     reserveScore: Math.min(100, Math.round(balance > 0 ? 100 : 0)),
     categories: [{ label: "BTC Transfers", amount: totalOut / 1e8, pct: 100 }],
     recentTxs: txs.slice(0, 5).map((tx: any) => ({
+      fullHash: tx.hash ?? "",
       hash: tx.hash?.slice(0, 18) + "…",
       time: new Date(tx.time * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
       value: (tx.result / 1e8).toFixed(6),
@@ -104,6 +106,7 @@ async function analyzeEVM(addr: string) {
     reserveScore: balance > 0.1 ? 95 : balance > 0.01 ? 65 : 30,
     categories: [{ label: "ETH Transfers", amount: totalOut, pct: 100 }],
     recentTxs: txs.slice(0, 5).map((tx: any) => ({
+      fullHash: tx.hash ?? "",
       hash: tx.hash?.slice(0, 18) + "…",
       time: new Date(parseInt(tx.timeStamp) * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
       value: (parseFloat(tx.value) / 1e18).toFixed(6),
@@ -148,6 +151,12 @@ export default function WalletAnalyzer() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [aiInsights, setAiInsights] = useState<AIInsights | null>(null);
   const [error, setError] = useState("");
+  // tagging state: txHash → tag label
+  const [tags, setTags] = useState<Record<string, string>>({});
+  const [tagInput, setTagInput] = useState<Record<string, string>>({});
+  const [tagOpen, setTagOpen] = useState<Record<string, boolean>>({});
+  const [tagSaving, setTagSaving] = useState<Record<string, boolean>>({});
+  const tagRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const analyze = async () => {
     const trimmed = address.trim();
@@ -178,7 +187,36 @@ export default function WalletAnalyzer() {
   };
 
   const handleKey = (e: React.KeyboardEvent) => { if (e.key === "Enter") analyze(); };
-  const reset = () => { setResult(null); setError(""); setAddress(""); setAiInsights(null); };
+  const reset = () => {
+    setResult(null); setError(""); setAddress(""); setAiInsights(null);
+    setTags({}); setTagInput({}); setTagOpen({}); setTagSaving({});
+  };
+
+  const openTag = (hash: string) => {
+    setTagOpen(p => ({ ...p, [hash]: true }));
+    setTimeout(() => tagRefs.current[hash]?.focus(), 50);
+  };
+
+  const closeTag = (hash: string) => {
+    setTagOpen(p => ({ ...p, [hash]: false }));
+  };
+
+  const saveTag = async (hash: string) => {
+    const label = (tagInput[hash] || '').trim();
+    if (!label || !result) return;
+    setTagSaving(p => ({ ...p, [hash]: true }));
+    try {
+      await walletApi.addTag(hash, result.address, label);
+      setTags(p => ({ ...p, [hash]: label }));
+      setTagOpen(p => ({ ...p, [hash]: false }));
+    } catch {
+      // silently ignore — tag saved locally anyway
+      setTags(p => ({ ...p, [hash]: label }));
+      setTagOpen(p => ({ ...p, [hash]: false }));
+    } finally {
+      setTagSaving(p => ({ ...p, [hash]: false }));
+    }
+  };
 
   const scoreColor = (score: number) => score >= 80 ? "var(--green)" : score >= 50 ? "var(--amber)" : "var(--accent)";
 
@@ -434,37 +472,93 @@ export default function WalletAnalyzer() {
               <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-base)", borderRadius: "var(--r-xl)", padding: "20px 22px" }}>
                 <div className="flex items-center justify-between mb-4">
                   <p style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-muted)" }}>Recent activity</p>
+                  <p style={{ fontSize: "10px", color: "var(--text-muted)" }}>Click 🏷 to tag</p>
                 </div>
                 {result.recentTxs.length === 0 ? (
                   <p style={{ fontSize: "13px", color: "var(--text-muted)", padding: "8px 0" }}>No recent transactions.</p>
                 ) : (
                   <div>
-                    {result.recentTxs.map((tx: any, i: number) => (
-                      <motion.div
-                        key={i}
-                        initial={{ opacity: 0, x: -8 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: i * 0.06, ease: E }}
-                        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 0", borderBottom: i < result.recentTxs.length - 1 ? "1px solid var(--border-void)" : "none" }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          <div style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: tx.direction === "in" ? "rgba(34,197,94,0.12)" : "rgba(247,147,26,0.10)" }}>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={tx.direction === "in" ? "var(--green)" : "var(--accent)"} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                              {tx.direction === "in"
-                                ? <><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></>
-                                : <><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></>}
-                            </svg>
+                    {result.recentTxs.map((tx: any, i: number) => {
+                      const fh = tx.fullHash || tx.hash;
+                      const savedTag = tags[fh];
+                      const isOpen = tagOpen[fh];
+                      const isSaving = tagSaving[fh];
+                      return (
+                        <motion.div
+                          key={i}
+                          initial={{ opacity: 0, x: -8 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: i * 0.06, ease: E }}
+                          style={{ padding: "13px 0", borderBottom: i < result.recentTxs.length - 1 ? "1px solid var(--border-void)" : "none" }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                              <div style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: tx.direction === "in" ? "rgba(34,197,94,0.12)" : "rgba(247,147,26,0.10)" }}>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={tx.direction === "in" ? "var(--green)" : "var(--accent)"} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                  {tx.direction === "in"
+                                    ? <><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></>
+                                    : <><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></>}
+                                </svg>
+                              </div>
+                              <div>
+                                <p style={{ fontSize: "13px", color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}>{tx.hash}</p>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+                                  <p style={{ fontSize: "11px", color: "var(--text-muted)" }}>{tx.time}</p>
+                                  {savedTag && (
+                                    <span style={{ fontSize: "10px", padding: "1px 7px", borderRadius: 10, background: "rgba(247,147,26,0.10)", color: "#F7931A", border: "1px solid rgba(247,147,26,0.22)", fontWeight: 600 }}>
+                                      {savedTag}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span style={{ fontSize: "13px", fontFamily: "var(--font-mono)", fontWeight: 600, color: tx.direction === "in" ? "var(--green)" : "var(--text-primary)" }}>
+                                {tx.direction === "in" ? "+" : "-"}{tx.value} {result.type === "btc" ? "BTC" : "ETH"}
+                              </span>
+                              <button
+                                onClick={() => isOpen ? closeTag(fh) : openTag(fh)}
+                                style={{ fontSize: "14px", background: "transparent", border: "none", cursor: "pointer", padding: "2px 4px", borderRadius: 6, lineHeight: 1, opacity: 0.7 }}
+                                title={savedTag ? "Edit tag" : "Add tag"}
+                              >
+                                🏷
+                              </button>
+                            </div>
                           </div>
-                          <div>
-                            <p style={{ fontSize: "13px", color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}>{tx.hash}</p>
-                            <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: 2 }}>{tx.time}</p>
-                          </div>
-                        </div>
-                        <span style={{ fontSize: "13px", fontFamily: "var(--font-mono)", fontWeight: 600, color: tx.direction === "in" ? "var(--green)" : "var(--text-primary)" }}>
-                          {tx.direction === "in" ? "+" : "-"}{tx.value} {result.type === "btc" ? "BTC" : "ETH"}
-                        </span>
-                      </motion.div>
-                    ))}
+                          <AnimatePresence>
+                            {isOpen && (
+                              <motion.div
+                                initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}
+                                exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.18 }}
+                                style={{ overflow: "hidden" }}
+                              >
+                                <div style={{ display: "flex", gap: 6, marginTop: 8, paddingLeft: 38 }}>
+                                  <input
+                                    ref={el => { tagRefs.current[fh] = el; }}
+                                    value={tagInput[fh] || ""}
+                                    onChange={e => setTagInput(p => ({ ...p, [fh]: e.target.value }))}
+                                    onKeyDown={e => { if (e.key === "Enter") saveTag(fh); if (e.key === "Escape") closeTag(fh); }}
+                                    placeholder="e.g. payroll, subscription, gas…"
+                                    style={{ flex: 1, background: "var(--bg-raised)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 8, padding: "6px 10px", fontSize: "12px", color: "var(--text-primary)", outline: "none", fontFamily: "var(--font-mono)" }}
+                                  />
+                                  <button
+                                    onClick={() => saveTag(fh)}
+                                    disabled={isSaving || !(tagInput[fh] || "").trim()}
+                                    style={{ padding: "6px 14px", fontSize: "12px", background: "#F7931A", color: "#0a0a0a", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer", opacity: isSaving ? 0.6 : 1 }}
+                                  >
+                                    {isSaving ? "…" : "Save"}
+                                  </button>
+                                  <button onClick={() => closeTag(fh)}
+                                    style={{ padding: "6px 10px", fontSize: "12px", background: "transparent", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, cursor: "pointer" }}>
+                                    ✕
+                                  </button>
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </motion.div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

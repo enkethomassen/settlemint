@@ -24,6 +24,7 @@ import X402Monitor from '@/components/X402Monitor';
 import InsightsFeed from '@/components/InsightsFeed';
 import AgentSettingsPanel from '@/components/AgentSettingsPanel';
 import CashflowForecast from '@/components/CashflowForecast';
+import MezoPassport from '@/components/MezoPassport';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
 import { useVault } from '@/hooks/useVault';
@@ -389,7 +390,12 @@ export default function AppClient() {
                 )}
                 {tab === 'yield' && <YieldPanel />}
                 {tab === 'x402'  && <X402Monitor log={executionLog} stats={paymentStats} />}
-                {tab === 'settings' && <AgentSettingsPanel />}
+                {tab === 'settings' && (
+                  <div className="space-y-6 max-w-3xl">
+                    <AgentSettingsPanel />
+                    <MezoPassport />
+                  </div>
+                )}
                 {tab === 'agent' && (
                   <div className="space-y-6">
                     <SectionHead title="Automation Agent" sub="Scheduler runs every minute · executes due payments via contract or x402." />
