@@ -255,6 +255,67 @@ export const agentApi = {
     }),
 };
 
+// ─── Consolidation (token → MUSD) ─────────────────────────────────────────────
+
+export interface ConsolidationToken {
+  contract: string;
+  symbol: string;
+  name: string;
+  decimals: number;
+  balanceRaw: string;
+  balance: number;
+  priceUSD: number | null;
+  estimatedMUSD: number;
+  priceAvailable: boolean;
+  iconUrl: string | null;
+  isNative: boolean;
+}
+
+export interface ConsolidationPreviewResult {
+  address: string;
+  musdPeg: number;
+  tokens: ConsolidationToken[];
+  totalEstimatedMUSD: number;
+}
+
+export interface ConsolidationItem {
+  contract: string;
+  symbol: string;
+  balance: number;
+  estimatedMUSD: number;
+}
+
+export interface ConsolidationRequest {
+  id: number;
+  address: string;
+  mode: "safe" | "autopilot";
+  schedule: "now" | "month_end";
+  scheduledFor: number;
+  status: "pending_approval" | "queued" | "cancelled";
+  items: ConsolidationItem[];
+  totalMUSD: number;
+  createdAt: number;
+}
+
+export const consolidationApi = {
+  preview: (address: string) =>
+    apiFetch<ConsolidationPreviewResult>("/api/consolidation/preview", {
+      method: "POST",
+      body: JSON.stringify({ address }),
+    }),
+
+  execute: (address: string, contracts: string[], schedule: "now" | "month_end") =>
+    apiFetch<{ success: boolean; request: ConsolidationRequest; message: string }>(
+      "/api/consolidation/execute",
+      { method: "POST", body: JSON.stringify({ address, contracts, schedule }) },
+    ),
+
+  list: (address: string) =>
+    apiFetch<{ requests: ConsolidationRequest[] }>(
+      `/api/consolidation/execute?address=${encodeURIComponent(address)}`,
+    ),
+};
+
 export const walletApi = {
   analyze: (
     address: string,

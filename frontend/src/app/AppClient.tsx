@@ -29,6 +29,7 @@ import PolicySetup from '@/components/PolicySetup';
 import PriceTicker from '@/components/PriceTicker';
 import SafeApprovalQueue from '@/components/SafeApprovalQueue';
 import MyTransactions from '@/components/MyTransactions';
+import ConsolidationCard from '@/components/ConsolidationCard';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
 import { useVault } from '@/hooks/useVault';
@@ -481,6 +482,9 @@ function DashboardView({ payments, log, setTab, isLoading, musdBalance, walletAd
 
       {/* Safe mode approval queue — predicted upcoming transactions */}
       <SafeApprovalQueue />
+
+      {/* Monthly Consolidation — roll tokens into MUSD (Feature 1) */}
+      {walletAddress && <ConsolidationCard walletAddress={walletAddress} />}
 
       {/* My Transactions — owner-gated tagging / overrides / notes (Bug 2) */}
       {walletAddress && <MyTransactions walletAddress={walletAddress} />}
