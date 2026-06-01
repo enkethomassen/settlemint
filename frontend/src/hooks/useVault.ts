@@ -19,6 +19,7 @@ export interface VaultOnChain {
   payments: OnChainPayment[];
   isLoading: boolean;
   isError: boolean;
+  errorMessage?: string;
   refetch: () => void;
 }
 
@@ -41,6 +42,7 @@ function useDemoVault(address: string | undefined): VaultOnChain {
   const [data, setData] = useState<VaultOnChain | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined);
 
   const load = useCallback(async () => {
     if (!address) {
@@ -88,8 +90,12 @@ function useDemoVault(address: string | undefined): VaultOnChain {
         refetch: load,
       });
       setIsError(false);
-    } catch {
+      setErrorMessage(undefined);
+    } catch (e: unknown) {
       setIsError(true);
+      // api.getVault throws Error(message) — message carries the structured
+      // reason from the route (e.g. "Mezo RPC unavailable").
+      setErrorMessage(e instanceof Error ? e.message : "Could not reach Mezo RPC");
     } finally {
       setIsLoading(false);
     }
@@ -110,11 +116,12 @@ function useDemoVault(address: string | undefined): VaultOnChain {
       payments: [],
       isLoading,
       isError,
+      errorMessage,
       refetch: load,
     };
   }
 
-  return { ...data, isLoading, isError, refetch: load };
+  return { ...data, isLoading, isError, errorMessage, refetch: load };
 }
 
 // ── Live mode (contract address configured) — read from chain ─────────────────
@@ -186,6 +193,7 @@ function useLiveVault(address: string | undefined): VaultOnChain {
     payments,
     isLoading,
     isError,
+    errorMessage: isError ? "Could not read the vault contract on Mezo" : undefined,
     refetch,
   };
 }

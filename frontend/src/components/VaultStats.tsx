@@ -1,5 +1,5 @@
 "use client";
-import { Bitcoin, DollarSign, Shield, Layers, TrendingUp, Wallet } from "lucide-react";
+import { Bitcoin, DollarSign, Shield, Layers, TrendingUp, Wallet, AlertTriangle, RefreshCw } from "lucide-react";
 import { useVault } from "@/hooks/useVault";
 import { useAccount } from "wagmi";
 import { motion } from "framer-motion";
@@ -61,7 +61,7 @@ function useMezoWallet(address: string | undefined) {
 }
 
 export default function VaultStats() {
-  const { collateral, musdBalance, collateralRatio, payments, isLoading } = useVault();
+  const { collateral, musdBalance, collateralRatio, payments, isLoading, isError, errorMessage, refetch } = useVault();
   const { address } = useAccount();
   const btcPrice = useLivePrice();
   const { balance: mezoBalance, txCount } = useMezoWallet(address);
@@ -93,6 +93,7 @@ export default function VaultStats() {
       iconBorder: "var(--btc-border)",
       valueColor: "var(--btc)",
       borderAccent: "var(--btc-border)",
+      error: false,
     },
     {
       label: "Available MUSD",
@@ -105,6 +106,8 @@ export default function VaultStats() {
       iconBorder: "var(--accent-border)",
       valueColor: "var(--text-primary)",
       borderAccent: "transparent",
+      // Bug 3: surface a real reason + retry instead of a meaningless 0.00.
+      error: isError,
     },
     {
       label: "Collateral Health",
@@ -117,6 +120,7 @@ export default function VaultStats() {
       iconBorder: ratioStatus === "danger" ? "var(--danger-border)" : ratioStatus === "ok" ? "rgba(22,163,74,0.2)" : "var(--border)",
       valueColor: ratio === 0 ? "var(--text-muted)" : ratioColor,
       borderAccent: "transparent",
+      error: false,
     },
     {
       label: "On-Chain Activity",
@@ -129,6 +133,7 @@ export default function VaultStats() {
       iconBorder: "var(--border)",
       valueColor: "var(--text-primary)",
       borderAccent: "transparent",
+      error: false,
     },
   ];
 
@@ -151,7 +156,26 @@ export default function VaultStats() {
             </div>
           </div>
 
-          {(isLoading && stat.value === null) ? (
+          {stat.error ? (
+            <div className="mt-1">
+              <div className="flex items-center gap-1.5">
+                <AlertTriangle size={13} style={{ color: "var(--amber, #d97706)" }} />
+                <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                  {errorMessage || "Mezo RPC unavailable"}
+                </p>
+              </div>
+              <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+                Couldn’t read your MUSD balance from Mezo.
+              </p>
+              <button
+                onClick={() => refetch()}
+                className="mt-2 inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold"
+                style={{ background: "var(--bg-raised)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}
+              >
+                <RefreshCw size={12} /> Retry
+              </button>
+            </div>
+          ) : (isLoading && stat.value === null) ? (
             <div className="space-y-2 mt-1">
               <div className="skeleton h-7 w-20" />
               <div className="skeleton h-3 w-14" />
