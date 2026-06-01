@@ -11,7 +11,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Tag, ChevronDown, Copy, Check, Wallet, Download, RefreshCw } from 'lucide-react';
+import { Tag, ChevronDown, Copy, Check, Wallet, Download, RefreshCw, X } from 'lucide-react';
 import {
   walletApi,
   type TransactionCategory,
@@ -103,6 +103,9 @@ export default function MyTransactions({ walletAddress }: { walletAddress: strin
   const [draft, setDraft] = useState<RowState | null>(null);
   const [saving, setSaving] = useState(false);
   const [filterCat, setFilterCat] = useState<string>('all');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkCat, setBulkCat] = useState<TransactionCategory>('payment');
+  const [bulkSaving, setBulkSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -171,6 +174,40 @@ export default function MyTransactions({ walletAddress }: { walletAddress: strin
       setError(e?.message ?? 'Failed to remove. Try again.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const toggleSelect = (hash: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(hash) ? next.delete(hash) : next.add(hash);
+      return next;
+    });
+  };
+
+  // Bulk: assign one category to every selected tx (merges with any existing
+  // tag/note server-side).
+  const applyBulkCategory = async () => {
+    if (selected.size === 0) return;
+    setBulkSaving(true);
+    setError(null);
+    try {
+      const updated = await Promise.all(
+        [...selected].map(hash => {
+          const existing = tags[hash];
+          return walletApi.addTag(hash, walletAddress, existing?.userTag, bulkCat, existing?.note);
+        }),
+      );
+      setTags(prev => {
+        const next = { ...prev };
+        for (const { tag } of updated) next[tag.txHash] = tag;
+        return next;
+      });
+      setSelected(new Set());
+    } catch (e: any) {
+      setError(e?.message ?? 'Bulk update failed. Try again.');
+    } finally {
+      setBulkSaving(false);
     }
   };
 
@@ -270,7 +307,34 @@ export default function MyTransactions({ walletAddress }: { walletAddress: strin
 
       {/* Table */}
       {!loading && !error && txs.length > 0 && (
-        <div className="space-y-1">
+        <div>
+          {/* Bulk action bar */}
+          <AnimatePresence>
+            {selected.size > 0 && (
+              <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+                className="flex items-center gap-2 flex-wrap mb-3 rounded-xl px-3 py-2"
+                style={{ background: 'rgba(247,147,26,0.08)', border: '1px solid rgba(247,147,26,0.24)' }}>
+                <span className="text-xs font-semibold" style={{ color: '#F7931A' }}>{selected.size} selected</span>
+                <span className="text-xs" style={{ color: 'var(--text-muted)' }}>· set category</span>
+                <select value={bulkCat} onChange={e => setBulkCat(e.target.value as TransactionCategory)}
+                  className="rounded-lg px-2 py-1 text-xs outline-none capitalize"
+                  style={{ background: 'var(--bg-card)', border: '1px solid var(--border-base)', color: 'var(--text-secondary)' }}>
+                  {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <button onClick={applyBulkCategory} disabled={bulkSaving}
+                  className="rounded-lg px-3 py-1 text-xs font-semibold disabled:opacity-50" style={{ background: '#F7931A', color: '#000' }}>
+                  {bulkSaving ? 'Applying…' : 'Apply'}
+                </button>
+                <button onClick={() => setSelected(new Set())}
+                  className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs"
+                  style={{ background: 'transparent', border: '1px solid var(--border-base)', color: 'var(--text-muted)' }}>
+                  <X className="h-3 w-3" /> Clear
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div className="space-y-1">
           {txs.slice(0, 50).map(tx => {
             const saved = tags[tx.hash];
             const out = tx.from.toLowerCase() === walletAddress.toLowerCase();
@@ -284,9 +348,16 @@ export default function MyTransactions({ walletAddress }: { walletAddress: strin
               <div key={tx.hash} className="rounded-xl"
                 style={{ border: `1px solid ${isOpen ? 'var(--border-hi, var(--border-base))' : 'transparent'}`, background: isOpen ? 'var(--bg-raised)' : 'transparent' }}>
                 {/* Row */}
-                <button onClick={() => openRow(tx)}
-                  className="w-full flex items-center gap-3 px-3 py-3 text-left rounded-xl transition-colors hover:bg-white/[0.02]"
+                <div onClick={() => openRow(tx)} role="button" tabIndex={0}
+                  className="w-full flex items-center gap-3 px-3 py-3 text-left rounded-xl transition-colors hover:bg-white/[0.02] cursor-pointer"
                   style={{ borderBottom: isOpen ? 'none' : '1px solid var(--border-void)' }}>
+                  {/* select checkbox */}
+                  <button onClick={e => { e.stopPropagation(); toggleSelect(tx.hash); }}
+                    aria-label="Select transaction"
+                    className="h-4 w-4 rounded-[5px] flex items-center justify-center shrink-0"
+                    style={{ background: selected.has(tx.hash) ? '#F7931A' : 'transparent', border: `1.5px solid ${selected.has(tx.hash) ? '#F7931A' : 'var(--border-base)'}` }}>
+                    {selected.has(tx.hash) && <Check className="h-3 w-3" style={{ color: '#000' }} />}
+                  </button>
                   {/* date + counterparty */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -328,7 +399,7 @@ export default function MyTransactions({ walletAddress }: { walletAddress: strin
                     </div>
                   </div>
                   <ChevronDown className="h-4 w-4 shrink-0 transition-transform" style={{ color: 'var(--text-muted)', transform: isOpen ? 'rotate(180deg)' : 'none' }} />
-                </button>
+                </div>
 
                 {/* Expanded editor */}
                 <AnimatePresence>
@@ -387,6 +458,7 @@ export default function MyTransactions({ walletAddress }: { walletAddress: strin
               </div>
             );
           })}
+          </div>
         </div>
       )}
     </div>
