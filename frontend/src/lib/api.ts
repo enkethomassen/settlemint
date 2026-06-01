@@ -198,10 +198,16 @@ export interface CategoryBreakdown {
   percentage: number;
 }
 
+export interface SwapActivity {
+  count: number;
+  volumeUSD: number;
+}
+
 export interface WalletAnalysis {
   address: string;
   addressType: "evm" | "bitcoin";
   range: string;
+  minValueUSD: number;
   totalOutflow: number;
   totalInflow: number;
   monthlyBurn: number;
@@ -210,6 +216,7 @@ export interface WalletAnalysis {
   transactions: WalletTransaction[];
   recurringPayments: RecurringPayment[];
   spendByCategory: CategoryBreakdown[];
+  swapActivity: SwapActivity;
   aiInsights: string[];
   topRecipients: { address: string; label?: string; totalUSD: number; count: number }[];
 }
@@ -247,10 +254,15 @@ export const agentApi = {
 };
 
 export const walletApi = {
-  analyze: (address: string, addressType?: "evm" | "bitcoin", range: "30d" | "90d" | "180d" = "90d") =>
+  analyze: (
+    address: string,
+    addressType?: "evm" | "bitcoin",
+    range: "30d" | "90d" | "180d" = "90d",
+    minValueUSD?: number,
+  ) =>
     apiFetch<WalletAnalysis>("/api/wallet/analyze", {
       method: "POST",
-      body: JSON.stringify({ address, addressType, range }),
+      body: JSON.stringify({ address, addressType, range, minValueUSD }),
     }),
 
   addTag: (txHash: string, walletAddress: string, tag: string, category?: string) =>

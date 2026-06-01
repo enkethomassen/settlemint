@@ -1,7 +1,7 @@
 'use client';
 import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, ArrowRight, RefreshCw, Tag, Eye, EyeOff, TrendingDown, Clock, Shield, Repeat } from 'lucide-react';
+import { Search, ArrowRight, RefreshCw, Tag, Eye, EyeOff, TrendingDown, Clock, Shield, Repeat, ArrowLeftRight } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
 } from 'recharts';
@@ -221,9 +221,10 @@ function TxRow({ tx, walletAddress, tag, onTagged }: {
 
 // ── Spend Chart ──────────────────────────────────────────────────────────────
 function SpendChart({ transactions }: { transactions: WalletTransaction[] }) {
-  // Group by week
+  // Group by week. Swaps are excluded — they have their own Swap Activity
+  // section and would otherwise distort the cash-flow chart (Bug 1).
   const buckets: Record<string, number> = {};
-  for (const tx of transactions.filter(t => !t.isFiltered)) {
+  for (const tx of transactions.filter(t => !t.isFiltered && t.category !== 'swap')) {
     const d = new Date(tx.timestamp * 1000);
     const key = `${d.getMonth() + 1}/${d.getDate()}`;
     buckets[key] = (buckets[key] ?? 0) + tx.amountUSD;
@@ -416,6 +417,32 @@ export default function AnalyzePage() {
                   </div>
                 </div>
               </div>
+
+              {/* Swap Activity — kept separate from spending so DEX volume
+                  never pollutes the cash-flow breakdown (Bug 1). */}
+              {analysis.swapActivity && analysis.swapActivity.count > 0 && (
+                <div className="rounded-2xl p-5 flex items-center gap-4"
+                  style={{ background: 'var(--bg-card)', border: '1px solid var(--border-base)' }}>
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl shrink-0"
+                    style={{ background: 'rgba(167,139,250,0.12)', border: '1px solid rgba(167,139,250,0.24)' }}>
+                    <ArrowLeftRight className="h-5 w-5" style={{ color: '#a78bfa' }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--text-muted)' }}>
+                      Swap Activity
+                    </p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                      {analysis.swapActivity.count} swap{analysis.swapActivity.count === 1 ? '' : 's'} · excluded from spending
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)' }}>
+                      {fmtUSD(analysis.swapActivity.volumeUSD)}
+                    </div>
+                    <div className="text-xs" style={{ color: 'var(--text-muted)' }}>volume</div>
+                  </div>
+                </div>
+              )}
 
 
               {/* Tabs */}

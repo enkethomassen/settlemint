@@ -51,6 +51,48 @@ function categorize(tx: any, userAddress: string): string {
   return "transfer";
 }
 
+// ── Bug 1: gas / swap / dust noise filtering ─────────────────────────────────
+// Returns a human filterReason if the tx is noise that should be hidden from
+// treasury analysis, or null if it is a meaningful treasury event.
+//
+//   • Internal self-calls (from == to) carry no semantic meaning.
+//   • Gas-only movements: tiny native value, no token transfer, empty input.
+//   • Anything below the configurable minValueUSD threshold (default $1.00).
+//
+// Swaps are NOT marked as noise here — they are real activity, but they are
+// routed into a dedicated "Swap Activity" aggregate instead of polluting the
+// spending breakdown (handled by the caller, not this function).
+function noiseReason(
+  tx: {
+    from: string;
+    to: string;
+    amount: number;
+    amountUSD: number;
+    category: string;
+    hasTokenTransfer: boolean;
+    rawInput: string;
+  },
+  minValueUSD: number,
+): string | null {
+  const from = tx.from.toLowerCase();
+  const to = tx.to.toLowerCase();
+
+  if (from && to && from === to) return "Internal self-transfer";
+
+  const inputIsEmpty = !tx.rawInput || tx.rawInput === "0x" || tx.rawInput === "0x0";
+  const isGasOnly =
+    tx.amount < 0.001 && !tx.hasTokenTransfer && inputIsEmpty && tx.category === "transfer";
+  if (isGasOnly) return "Gas-only movement";
+
+  // Below the dashboard display threshold — but never hide swaps (they have
+  // their own section) and never hide token transfers that carry value.
+  if (tx.category !== "swap" && tx.amountUSD < minValueUSD && !tx.hasTokenTransfer) {
+    return `Below $${minValueUSD.toFixed(2)} minimum`;
+  }
+
+  return null;
+}
+
 function detectRecurring(outflows: any[]) {
   const byTo: Record<string, number[]> = {};
   for (const tx of outflows) {
@@ -86,7 +128,12 @@ function detectRecurring(outflows: any[]) {
 }
 
 export async function POST(req: NextRequest) {
-  const { address, addressType, range = "90d" } = await req.json();
+  const body = await req.json();
+  const { address, addressType, range = "90d" } = body;
+  // Bug 1: configurable display threshold. Sub-threshold txs are excluded from
+  // the dashboard unless the client opts into "Show all transactions".
+  const minValueUSD =
+    typeof body.minValueUSD === "number" && body.minValueUSD >= 0 ? body.minValueUSD : 1.0;
   if (!address) {
     return NextResponse.json({ error: "address required" }, { status: 400 });
   }
@@ -115,16 +162,26 @@ export async function POST(req: NextRequest) {
         : (tx.out ?? []).reduce((s: number, o: any) => o.addr === address ? s + (o.value ?? 0) : s, 0);
       const amount = valueRaw / 1e8;
       const amountUSD = amount * BTC_PRICE_USD;
+      const ts = tx.time ?? 0;
+      const outOfRange = ts < cutoffTs;
+      // Bug 1: hide dust below the display threshold so the dashboard isn't
+      // polluted by sub-$1 movements.
+      const isDust = !outOfRange && amountUSD < minValueUSD;
       return {
         hash: tx.hash ?? "",
-        timestamp: tx.time ?? 0,
+        timestamp: ts,
         from: isOut ? address : "external",
         to: isOut ? "external" : address,
         amount,
         amountUSD,
         token: "BTC",
         category: "transfer",
-        isFiltered: (tx.time ?? 0) < cutoffTs,
+        isFiltered: outOfRange || isDust,
+        filterReason: outOfRange
+          ? `Outside ${range} range`
+          : isDust
+          ? `Below $${minValueUSD.toFixed(2)} minimum`
+          : undefined,
       };
     });
 
@@ -140,6 +197,7 @@ export async function POST(req: NextRequest) {
       address,
       addressType: "bitcoin",
       range,
+      minValueUSD,
       totalOutflow,
       totalInflow: inRange.filter(t => t.to === address).reduce((s, t) => s + t.amountUSD, 0),
       monthlyBurn,
@@ -150,6 +208,8 @@ export async function POST(req: NextRequest) {
       spendByCategory: totalOutflow > 0
         ? [{ category: "transfer", amountUSD: totalOutflow, percentage: 100 }]
         : [],
+      // Bitcoin has no on-chain swap concept — kept for response-shape parity.
+      swapActivity: { count: 0, volumeUSD: 0 },
       aiInsights: [],
       topRecipients: [],
     });
@@ -174,11 +234,22 @@ export async function POST(req: NextRequest) {
       : 0;
     const fromAddr = (tx.from?.hash ?? "").toLowerCase();
     const toAddr = (tx.to?.hash ?? tx.to ?? "").toLowerCase();
-    const isOut = fromAddr === addrLower;
     const valueRaw = parseFloat(tx.value ?? "0");
     const amount = valueRaw / NATIVE_DECIMALS;
     const amountUSD = amount * exchangeRate;
     const category = categorize(tx, address);
+    const hasTokenTransfer =
+      Array.isArray(tx.token_transfers) && tx.token_transfers.length > 0;
+    const rawInput: string = tx.raw_input ?? tx.input ?? "0x";
+
+    const outOfRange = ts < cutoffTs;
+    // Bug 1: classify treasury noise (gas, internal self-calls, sub-$1 dust).
+    const reason = outOfRange
+      ? `Outside ${range} range`
+      : noiseReason(
+          { from: fromAddr, to: toAddr, amount, amountUSD, category, hasTokenTransfer, rawInput },
+          minValueUSD,
+        );
 
     return {
       hash: tx.hash ?? "",
@@ -189,20 +260,30 @@ export async function POST(req: NextRequest) {
       amountUSD,
       token: "BTC",
       category,
-      isFiltered: ts < cutoffTs,
-      filterReason: ts < cutoffTs ? `Outside ${range} range` : undefined,
+      isFiltered: !!reason,
+      filterReason: reason ?? undefined,
     };
   });
 
-  const inRange = transactions.filter(t => !t.isFiltered);
-  const outflows = inRange.filter(t => t.from.toLowerCase() === addrLower);
-  const inflows = inRange.filter(t => t.to.toLowerCase() === addrLower);
+  // Clean = in range, not noise. Swaps are real but are reported separately so
+  // they never distort the spending breakdown or cash flow (Bug 1).
+  const clean = transactions.filter(t => !t.isFiltered);
+  const cleanNonSwap = clean.filter(t => t.category !== "swap");
+  const outflows = cleanNonSwap.filter(t => t.from.toLowerCase() === addrLower);
+  const inflows = cleanNonSwap.filter(t => t.to.toLowerCase() === addrLower);
   const totalOutflow = outflows.reduce((s, t) => s + t.amountUSD, 0);
   const totalInflow = inflows.reduce((s, t) => s + t.amountUSD, 0);
   const monthlyBurn = totalOutflow / (rangeDays / 30);
   const runway = monthlyBurn > 0 ? `${(balanceUSD / monthlyBurn).toFixed(1)} months` : "∞";
 
-  // Category breakdown
+  // Dedicated swap aggregate — volume only, kept out of the spending breakdown.
+  const swaps = clean.filter(t => t.category === "swap");
+  const swapActivity = {
+    count: swaps.length,
+    volumeUSD: swaps.reduce((s, t) => s + t.amountUSD, 0),
+  };
+
+  // Category breakdown (swaps excluded by construction)
   const catMap: Record<string, number> = {};
   for (const tx of outflows) {
     catMap[tx.category] = (catMap[tx.category] ?? 0) + tx.amountUSD;
@@ -234,6 +315,7 @@ export async function POST(req: NextRequest) {
     address,
     addressType: "evm",
     range,
+    minValueUSD,
     totalOutflow,
     totalInflow,
     monthlyBurn,
@@ -242,6 +324,7 @@ export async function POST(req: NextRequest) {
     transactions,
     recurringPayments: detectRecurring(outflows),
     spendByCategory,
+    swapActivity,
     aiInsights: [],
     topRecipients,
     txCount: txItems.length,
