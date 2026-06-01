@@ -227,7 +227,9 @@ export interface TransactionTag {
   walletAddress: string;
   userTag: string;
   category: string;
+  note: string;
   createdAt: number;
+  updatedAt: number;
 }
 
 // ─── Agent Settings ───────────────────────────────────────────────────────────
@@ -265,10 +267,16 @@ export const walletApi = {
       body: JSON.stringify({ address, addressType, range, minValueUSD }),
     }),
 
-  addTag: (txHash: string, walletAddress: string, tag: string, category?: string) =>
+  addTag: (
+    txHash: string,
+    walletAddress: string,
+    tag?: string,
+    category?: string,
+    note?: string,
+  ) =>
     apiFetch<{ success: boolean; tag: TransactionTag }>("/api/wallet/tag", {
       method: "POST",
-      body: JSON.stringify({ txHash, walletAddress, tag, category }),
+      body: JSON.stringify({ txHash, walletAddress, tag, category, note }),
     }),
 
   getTags: (address: string) =>

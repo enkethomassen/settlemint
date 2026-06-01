@@ -6,7 +6,9 @@ export interface TagRecord {
   walletAddress: string;
   userTag: string;
   category: string;
+  note: string;
   createdAt: number;
+  updatedAt: number;
 }
 
 declare global {

@@ -28,6 +28,7 @@ import MezoPassport from '@/components/MezoPassport';
 import PolicySetup from '@/components/PolicySetup';
 import PriceTicker from '@/components/PriceTicker';
 import SafeApprovalQueue from '@/components/SafeApprovalQueue';
+import MyTransactions from '@/components/MyTransactions';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
 import { useVault } from '@/hooks/useVault';
@@ -359,7 +360,7 @@ export default function AppClient() {
               <motion.div key={tab}
                 initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.22, ease: EC }}>
-                {tab === 'dashboard' && <DashboardView payments={payments} log={executionLog} setTab={setTab} isLoading={isLoading} musdBalance={parseFloat(musdBalance) || 0} />}
+                {tab === 'dashboard' && <DashboardView payments={payments} log={executionLog} setTab={setTab} isLoading={isLoading} musdBalance={parseFloat(musdBalance) || 0} walletAddress={walletAddress} />}
                 {tab === 'vault' && (
                   <div className="max-w-xl space-y-6">
                     <SectionHead title="Vault Management" sub="Deposit BTC collateral and mint MUSD." />
@@ -451,8 +452,8 @@ function SectionHead({ title, sub }: { title: string; sub?: string }) {
 }
 
 // ── Dashboard View ──────────────────────────────────────────
-function DashboardView({ payments, log, setTab, isLoading, musdBalance }: {
-  payments: any[]; log: ExecutionLogEntry[]; setTab: (t: Tab) => void; isLoading: boolean; musdBalance: number;
+function DashboardView({ payments, log, setTab, isLoading, musdBalance, walletAddress }: {
+  payments: any[]; log: ExecutionLogEntry[]; setTab: (t: Tab) => void; isLoading: boolean; musdBalance: number; walletAddress?: string;
 }) {
   return (
     <div className="space-y-7">
@@ -480,6 +481,9 @@ function DashboardView({ payments, log, setTab, isLoading, musdBalance }: {
 
       {/* Safe mode approval queue — predicted upcoming transactions */}
       <SafeApprovalQueue />
+
+      {/* My Transactions — owner-gated tagging / overrides / notes (Bug 2) */}
+      {walletAddress && <MyTransactions walletAddress={walletAddress} />}
 
       <InsightsFeed />
 
