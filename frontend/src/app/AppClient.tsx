@@ -30,6 +30,7 @@ import PriceTicker from '@/components/PriceTicker';
 import MyTransactions from '@/components/MyTransactions';
 import ConsolidationCard from '@/components/ConsolidationCard';
 import WalletAnalysisView from '@/components/WalletAnalysisView';
+import PredictedPaymentsView from '@/components/PredictedPaymentsView';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
 import { useVault } from '@/hooks/useVault';
@@ -363,6 +364,7 @@ export default function AppClient() {
                 transition={{ duration: 0.22, ease: EC }}>
                 {tab === 'dashboard' && <DashboardView payments={payments} log={executionLog} setTab={setTab} isLoading={isLoading} musdBalance={parseFloat(musdBalance) || 0} walletAddress={walletAddress} />}
                 {tab === 'analyze' && <WalletAnalysisView />}
+                {tab === 'predicted' && <PredictedPaymentsView />}
                 {tab === 'vault' && (
                   <div className="max-w-xl space-y-6">
                     <SectionHead title="Vault Management" sub="Deposit BTC collateral and mint MUSD." />
@@ -1287,7 +1289,7 @@ function BotCta() {
           <p className="text-[11px] font-bold uppercase tracking-[0.28em]" style={{ color: 'var(--text-muted)' }}>
             Or message us on
           </p>
-          <a href="https://t.me/BotFather" target="_blank" rel="noreferrer"
+          <a href="https://t.me/MezoStatsbot" target="_blank" rel="noreferrer"
             className="flex items-center gap-4 rounded-[20px] p-5 transition-all card-base"
             style={{ border: '1px solid rgba(34,158,255,0.22)' }}>
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl flex-shrink-0"
@@ -1297,9 +1299,9 @@ function BotCta() {
               </svg>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-bold leading-tight" style={{ color: 'var(--text-primary)', fontSize: '0.95rem' }}>Telegram bot</p>
+              <p className="font-bold leading-tight" style={{ color: 'var(--text-primary)', fontSize: '0.95rem' }}>@MezoStatsbot</p>
               <p className="text-[0.85rem] mt-1 truncate" style={{ color: 'var(--text-secondary)' }}>
-                /analyze · /vault — get insights via chat
+                /vault · /analyze — live stats in Telegram
               </p>
             </div>
             <ArrowRight className="h-4 w-4 flex-shrink-0" style={{ color: 'var(--text-muted)' }} />
