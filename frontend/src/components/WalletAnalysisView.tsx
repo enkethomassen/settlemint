@@ -1,5 +1,5 @@
 'use client';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAccount } from 'wagmi';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -66,6 +66,52 @@ function fmtTokenAmt(amount: number, symbol: string) {
   const decimals = abs >= 1 ? 4 : abs >= 0.0001 ? 6 : 8;
   const s = amount.toFixed(decimals).replace(/\.?0+$/, '');
   return `${s || '0'} ${symbol}`;
+}
+
+// ── Orange Pill Loader ────────────────────────────────────────
+const LOAD_STEPS = [
+  'Fetching Mezo transactions…',
+  'Resolving token prices…',
+  'Analyzing spend patterns…',
+  'Detecting recurring payments…',
+  'Computing cashflow metrics…',
+];
+function PillLoader() {
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setStep(s => (s + 1) % LOAD_STEPS.length), 1300);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+      className="flex flex-col items-center gap-6 py-20">
+      <div style={{ position: 'relative', width: 260, height: 10, borderRadius: 999, overflow: 'hidden',
+        background: 'rgba(247,147,26,0.10)', boxShadow: '0 0 20px rgba(247,147,26,0.12)' }}>
+        <motion.div style={{
+          position: 'absolute', inset: 0, borderRadius: 999,
+          background: 'linear-gradient(90deg, transparent, #F7931A 50%, transparent)',
+          width: '60%',
+        }}
+          animate={{ x: ['-100%', '280%'] }}
+          transition={{ duration: 1.4, repeat: Infinity, ease: [0.4, 0, 0.6, 1] }} />
+      </div>
+      <AnimatePresence mode="wait">
+        <motion.p key={step}
+          initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+          className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+          {LOAD_STEPS[step]}
+        </motion.p>
+      </AnimatePresence>
+      <div className="flex items-center gap-2.5">
+        {[0, 1, 2].map(i => (
+          <motion.div key={i} style={{ width: 36, height: 7, borderRadius: 999, background: '#F7931A' }}
+            animate={{ opacity: [0.2, 1, 0.2], scaleX: [0.7, 1, 0.7] }}
+            transition={{ duration: 1.2, delay: i * 0.18, repeat: Infinity, ease: 'easeInOut' }} />
+        ))}
+      </div>
+    </motion.div>
+  );
 }
 
 function CopyButton({ value }: { value: string }) {
@@ -377,15 +423,7 @@ export default function WalletAnalysisView() {
         </div>
       )}
 
-      {/* Loading skeleton */}
-      {loading && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {[1,2,3,4].map(i => <div key={i} className="h-20 rounded-2xl animate-pulse" style={{ background: 'var(--bg-card)' }} />)}
-          </div>
-          <div className="h-40 rounded-2xl animate-pulse" style={{ background: 'var(--bg-card)' }} />
-        </div>
-      )}
+      {loading && <PillLoader />}
 
       <AnimatePresence>
         {analysis && !loading && (

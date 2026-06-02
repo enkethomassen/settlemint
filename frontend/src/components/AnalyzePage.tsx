@@ -1,6 +1,7 @@
 'use client';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAccount } from 'wagmi';
+import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, ArrowRight, RefreshCw, Tag, Eye, EyeOff, TrendingDown, Clock, Shield, Repeat, ArrowLeftRight, Copy, Check, ExternalLink, ArrowDownLeft, ArrowUpRight, AlertTriangle } from 'lucide-react';
 import {
@@ -69,6 +70,55 @@ const CATEGORY_COLORS: Record<string, string> = {
   nft: '#f59e0b',
   unknown: '#6b6784',
 };
+
+// ── Orange Pill Loader ───────────────────────────────────────────────────────
+const LOAD_STEPS = [
+  'Fetching Mezo transactions…',
+  'Resolving token prices…',
+  'Analyzing spend patterns…',
+  'Detecting recurring payments…',
+  'Computing cashflow metrics…',
+];
+function PillLoader() {
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setStep(s => (s + 1) % LOAD_STEPS.length), 1300);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+      className="flex flex-col items-center gap-6 py-20">
+      {/* Shimmer pill */}
+      <div style={{ position: 'relative', width: 260, height: 10, borderRadius: 999, overflow: 'hidden',
+        background: 'rgba(247,147,26,0.10)', boxShadow: '0 0 20px rgba(247,147,26,0.12)' }}>
+        <motion.div style={{
+          position: 'absolute', inset: 0, borderRadius: 999,
+          background: 'linear-gradient(90deg, transparent, #F7931A 50%, transparent)',
+          width: '60%',
+        }}
+          animate={{ x: ['-100%', '280%'] }}
+          transition={{ duration: 1.4, repeat: Infinity, ease: [0.4, 0, 0.6, 1] }} />
+      </div>
+      {/* Step label */}
+      <AnimatePresence mode="wait">
+        <motion.p key={step}
+          initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+          className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+          {LOAD_STEPS[step]}
+        </motion.p>
+      </AnimatePresence>
+      {/* Three pill dots */}
+      <div className="flex items-center gap-2.5">
+        {[0, 1, 2].map(i => (
+          <motion.div key={i} style={{ width: 36, height: 7, borderRadius: 999, background: '#F7931A' }}
+            animate={{ opacity: [0.2, 1, 0.2], scaleX: [0.7, 1, 0.7] }}
+            transition={{ duration: 1.2, delay: i * 0.18, repeat: Infinity, ease: 'easeInOut' }} />
+        ))}
+      </div>
+    </motion.div>
+  );
+}
 
 const TAG_PRESETS: Array<{ label: string; category: TransactionCategory }> = [
   // Payments
@@ -306,6 +356,8 @@ function SpendChart({ transactions, emptyNote }: { transactions: WalletTransacti
 // ── Main Page ────────────────────────────────────────────────────────────────
 export default function AnalyzePage() {
   const { address: connectedAddress, isConnected } = useAccount();
+  const searchParams = useSearchParams();
+  const didAutoRun = useRef(false);
   const [input, setInput] = useState('');
   const [range, setRange] = useState<RangeOption>('90d');
   const [loading, setLoading] = useState(false);
@@ -343,13 +395,17 @@ export default function AnalyzePage() {
     setUserTags(prev => ({ ...prev, [hash]: tag }));
   }, []);
 
-  // Auto-run analysis for the connected wallet when the page loads.
+  // Auto-run: prioritise ?address param (from BotCta), then connected wallet.
   useEffect(() => {
-    if (!connectedAddress || analysis || loading) return;
-    setInput(connectedAddress);
-    run(connectedAddress);
+    if (didAutoRun.current) return;
+    const urlAddr = searchParams?.get('address') ?? '';
+    const target = urlAddr || connectedAddress || '';
+    if (!target) return;
+    didAutoRun.current = true;
+    setInput(target);
+    run(target);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connectedAddress]);
+  }, [searchParams, connectedAddress]);
 
   const visibleTxs = analysis
     ? (showFiltered ? analysis.transactions : analysis.transactions.filter(t => !t.isFiltered))
@@ -428,14 +484,8 @@ export default function AnalyzePage() {
         </motion.div>
 
 
-        {/* Loading skeleton */}
-        {loading && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-10 space-y-4">
-            {[1,2,3,4].map(i => (
-              <div key={i} className="h-16 rounded-2xl animate-pulse" style={{ background: 'var(--bg-card)' }} />
-            ))}
-          </motion.div>
-        )}
+        {/* Orange pill loading animation */}
+        {loading && <PillLoader />}
 
         {/* Results */}
         <AnimatePresence>
