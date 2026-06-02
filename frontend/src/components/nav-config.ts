@@ -1,7 +1,7 @@
 import type { ElementType } from 'react';
 import {
   LayoutDashboard, Vault, Plus, List,
-  TrendingUp, Zap, Activity, Settings2, BookOpen,
+  TrendingUp, Zap, Activity, Settings2, BookOpen, BarChart2,
 } from 'lucide-react';
 import type { Tab } from './types';
 
@@ -13,6 +13,7 @@ export const NAV_GROUPS: {
     label: 'Treasury',
     items: [
       { id: 'dashboard', label: 'Overview',      icon: LayoutDashboard },
+      { id: 'analyze',   label: 'Analysis',       icon: BarChart2 },
       { id: 'vault',     label: 'Vault',          icon: Vault },
       { id: 'yield',     label: 'Yield',          icon: TrendingUp,      tag: 'YIELD' },
     ],

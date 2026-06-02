@@ -27,9 +27,9 @@ import CashflowForecast from '@/components/CashflowForecast';
 import MezoPassport from '@/components/MezoPassport';
 import PolicySetup from '@/components/PolicySetup';
 import PriceTicker from '@/components/PriceTicker';
-import SafeApprovalQueue from '@/components/SafeApprovalQueue';
 import MyTransactions from '@/components/MyTransactions';
 import ConsolidationCard from '@/components/ConsolidationCard';
+import WalletAnalysisView from '@/components/WalletAnalysisView';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
 import { useVault } from '@/hooks/useVault';
@@ -362,6 +362,7 @@ export default function AppClient() {
                 initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.22, ease: EC }}>
                 {tab === 'dashboard' && <DashboardView payments={payments} log={executionLog} setTab={setTab} isLoading={isLoading} musdBalance={parseFloat(musdBalance) || 0} walletAddress={walletAddress} />}
+                {tab === 'analyze' && <WalletAnalysisView />}
                 {tab === 'vault' && (
                   <div className="max-w-xl space-y-6">
                     <SectionHead title="Vault Management" sub="Deposit BTC collateral and mint MUSD." />
@@ -469,7 +470,7 @@ function useWalletSummary(address: string | undefined) {
   return { summary, loading };
 }
 
-function WalletSummaryBar({ address }: { address: string }) {
+function WalletSummaryBar({ address, onFullAnalysis }: { address: string; onFullAnalysis: () => void }) {
   const { summary, loading } = useWalletSummary(address);
 
   if (loading) {
@@ -516,10 +517,10 @@ function WalletSummaryBar({ address }: { address: string }) {
         <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--text-muted)' }}>
           Cashflow Analysis · Last 30 days
         </p>
-        <a href="/analyze" className="text-xs font-semibold flex items-center gap-1"
-          style={{ color: '#F7931A' }}>
+        <button onClick={onFullAnalysis} className="text-xs font-semibold flex items-center gap-1"
+          style={{ color: '#F7931A', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
           Full analysis <ChevronRight size={11} />
-        </a>
+        </button>
       </div>
 
       {/* Key metrics */}
@@ -577,15 +578,12 @@ function DashboardView({ payments, log, setTab, isLoading, musdBalance, walletAd
       <VaultStats />
 
       {/* Live cashflow summary (burn rate, runway, top recipient) */}
-      {walletAddress && <WalletSummaryBar address={walletAddress} />}
+      {walletAddress && <WalletSummaryBar address={walletAddress} onFullAnalysis={() => setTab('analyze')} />}
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <CashflowTimeline payments={payments} />
         <CashflowForecast payments={payments} musdBalance={musdBalance} />
       </div>
-
-      {/* Safe mode approval queue — predicted upcoming transactions */}
-      <SafeApprovalQueue />
 
       {/* Monthly Consolidation — roll tokens into MUSD (Feature 1) */}
       {walletAddress && <ConsolidationCard walletAddress={walletAddress} />}
