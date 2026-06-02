@@ -10,7 +10,6 @@ import {
 } from 'lucide-react';
 import WalletConnect from '@/components/WalletConnect';
 import ThemeToggle from '@/components/ThemeToggle';
-import WalletAnalyzer from '@/components/WalletAnalyzer';
 import NetworkToggle from '@/components/NetworkToggle';
 import VaultStats from '@/components/VaultStats';
 import PaymentList from '@/components/PaymentList';
@@ -1006,9 +1005,6 @@ function LandingPage() {
             <BotCta />
           </Reveal>
         </section>
-
-        {/* ── WALLET ANALYZER ── */}
-        <WalletAnalyzer />
 
         {/* ── CTA ── */}
         <section className="mx-auto max-w-[1400px] px-6 sm:px-10 lg:px-14"
