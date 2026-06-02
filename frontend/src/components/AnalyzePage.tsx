@@ -677,7 +677,7 @@ export default function AnalyzePage() {
                         </p>
                         <a href="/" className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold"
                           style={{ background: '#F7931A', color: '#000' }}>
-                          Connect Mezo Passport <ArrowRight className="h-4 w-4" />
+                          Open Dashboard <ArrowRight className="h-4 w-4" />
                         </a>
                       </div>
                     </div>

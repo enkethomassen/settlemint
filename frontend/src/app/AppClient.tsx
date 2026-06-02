@@ -33,7 +33,7 @@ import ConsolidationCard from '@/components/ConsolidationCard';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
 import { useVault } from '@/hooks/useVault';
-import { api, type SchedulerStatus, type PaymentStats, type ExecutionLogEntry } from '@/lib/api';
+import { api, walletApi, type SchedulerStatus, type PaymentStats, type ExecutionLogEntry, type WalletAnalysis } from '@/lib/api';
 import { useNetwork } from '@/context/network-context';
 import type { Tab } from '@/components/types';
 import { BitstreamFlowAnimation } from '@/components/landing/BitstreamFlowAnimation';
@@ -452,6 +452,68 @@ function SectionHead({ title, sub }: { title: string; sub?: string }) {
   );
 }
 
+// ── Wallet cashflow summary fetched from live Mezo data ────
+function useWalletSummary(address: string | undefined) {
+  const [summary, setSummary] = useState<WalletAnalysis | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!address) return;
+    setLoading(true);
+    walletApi.analyze(address, 'evm', '30d')
+      .then(d => setSummary(d))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [address]);
+
+  return { summary, loading };
+}
+
+function WalletSummaryBar({ address }: { address: string }) {
+  const { summary, loading } = useWalletSummary(address);
+
+  if (loading) {
+    return (
+      <div className="grid grid-cols-3 gap-3">
+        {[1,2,3].map(i => <div key={i} className="h-14 rounded-xl animate-pulse" style={{ background: 'var(--bg-raised)' }} />)}
+      </div>
+    );
+  }
+  if (!summary) return null;
+
+  const fmtUSD = (n: number) =>
+    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+
+  const tokenBurnEntries = Object.entries(summary.monthlyBurnTokens ?? {}).filter(([, v]) => v > 0);
+  const burnLabel = summary.monthlyBurn > 0
+    ? fmtUSD(summary.monthlyBurn)
+    : tokenBurnEntries.length > 0
+      ? `${tokenBurnEntries[0][1].toFixed(2)} ${tokenBurnEntries[0][0]}`
+      : '$0';
+
+  const top = summary.topRecipients?.[0];
+  const topLabel = top
+    ? `${top.address.slice(0, 6)}…${top.address.slice(-4)}`
+    : '—';
+
+  return (
+    <div className="grid grid-cols-3 gap-3">
+      {[
+        { label: 'Monthly Burn (30d)', value: burnLabel, sub: 'avg outflow' },
+        { label: 'Runway', value: summary.runway, sub: 'at current rate' },
+        { label: 'Top Recipient', value: topLabel, sub: top ? `${top.count} txs` : 'no outflows' },
+      ].map(s => (
+        <div key={s.label} className="rounded-xl px-4 py-3"
+          style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-lo)' }}>
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] mb-1" style={{ color: 'var(--text-muted)' }}>{s.label}</p>
+          <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{s.value}</p>
+          <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>{s.sub}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Dashboard View ──────────────────────────────────────────
 function DashboardView({ payments, log, setTab, isLoading, musdBalance, walletAddress }: {
   payments: any[]; log: ExecutionLogEntry[]; setTab: (t: Tab) => void; isLoading: boolean; musdBalance: number; walletAddress?: string;
@@ -474,6 +536,9 @@ function DashboardView({ payments, log, setTab, isLoading, musdBalance, walletAd
 
       {/* Stats from real Mezo wallet data */}
       <VaultStats />
+
+      {/* Live cashflow summary (burn rate, runway, top recipient) */}
+      {walletAddress && <WalletSummaryBar address={walletAddress} />}
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <CashflowTimeline payments={payments} />

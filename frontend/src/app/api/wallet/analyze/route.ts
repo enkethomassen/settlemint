@@ -8,6 +8,8 @@ import {
 
 const MEZO_API = process.env.BLOCKSCOUT_BASE ?? "https://api.explorer.mezo.org";
 const COINGECKO_BASE = process.env.COINGECKO_BASE ?? "https://api.coingecko.com/api/v3";
+const DEFILLAMA_BASE = "https://coins.llama.fi";
+const MEZO_TOKEN_ADDRESS = "0x7B7c000000000000000000000000000000000001";
 const NATIVE_DECIMALS = 1e18;
 const EXPLORER_TIMEOUT = 10_000;
 const PRICE_TIMEOUT = 10_000;
@@ -81,6 +83,23 @@ async function fetchBtcPrice(fallback: number | null): Promise<number | null> {
     /* fall through */
   }
   return fallback;
+}
+
+async function fetchMezoTokenPrice(): Promise<number | null> {
+  try {
+    const res = await fetch(
+      `${DEFILLAMA_BASE}/prices/current/mezo:${MEZO_TOKEN_ADDRESS}`,
+      { signal: AbortSignal.timeout(PRICE_TIMEOUT) },
+    );
+    if (res.ok) {
+      const data = (await res.json()) as { coins?: Record<string, { price?: number }> };
+      const price = data?.coins?.[`mezo:${MEZO_TOKEN_ADDRESS}`]?.price;
+      if (price && price > 0) return price;
+    }
+  } catch {
+    /* fall through */
+  }
+  return null;
 }
 
 async function fetchBTCData(address: string) {
@@ -279,7 +298,10 @@ export async function POST(req: NextRequest) {
   // BTC price drives the native asset + wrapped-BTC pricing. Prefer live
   // CoinGecko, fall back to the explorer-reported exchange_rate.
   const explorerRate = addrInfo?.exchange_rate ? Number.parseFloat(addrInfo.exchange_rate) : null;
-  const btcPrice = await fetchBtcPrice(Number.isFinite(explorerRate as number) ? explorerRate : null);
+  const [btcPrice, mezoPrice] = await Promise.all([
+    fetchBtcPrice(Number.isFinite(explorerRate as number) ? explorerRate : null),
+    fetchMezoTokenPrice(),
+  ]);
 
   const activity = buildMezoActivity({
     address,
@@ -288,6 +310,7 @@ export async function POST(req: NextRequest) {
     nativeTxs,
     tokenTransfers,
     btcPrice,
+    mezoPrice,
     minValueUSD,
     includeUnknownPrice,
   });

@@ -154,15 +154,20 @@ export function detectDirection(from: string, to: string, user: string): Directi
 export interface PriceResolution { usd: number | null; source: UsdPriceSource; }
 
 // Resolve a per-unit USD price. btcPrice covers the native asset + wrapped BTC.
+// mezoPrice covers the MEZO governance token (fetched from DeFiLlama by the route).
 export function resolvePrice(
   token: { symbol?: string; exchange_rate?: string | null; isNative?: boolean },
   btcPrice: number | null,
+  mezoPrice?: number | null,
 ): PriceResolution {
   const sym = (token.symbol ?? "").toUpperCase();
   if (sym === "MUSD") return { usd: 1, source: "musd_peg" };
   if (STABLECOINS.has(sym)) return { usd: 1, source: "stablecoin_peg" };
   if (token.isNative || BTC_LIKE.has(sym)) {
     return btcPrice != null ? { usd: btcPrice, source: "native_price" } : { usd: null, source: "unavailable" };
+  }
+  if (sym === "MEZO" && mezoPrice != null && mezoPrice > 0) {
+    return { usd: mezoPrice, source: "explorer_rate" };
   }
   // Explorer sometimes carries a live exchange_rate per token.
   if (token.exchange_rate != null && token.exchange_rate !== "") {
@@ -202,7 +207,10 @@ function categorizeNative(tx: RawNativeTx): TreasuryCategory {
 }
 
 function categorizeToken(symbol: string, direction: Direction): TreasuryCategory {
-  if (STABLECOINS.has(symbol.toUpperCase())) return "stablecoin";
+  if (STABLECOINS.has(symbol.toUpperCase())) {
+    // Outgoing stablecoin = payment; incoming = receiving liquidity (stablecoin)
+    return direction === "outgoing" ? "payment" : "stablecoin";
+  }
   return "transfer";
 }
 
@@ -213,6 +221,7 @@ export function normalizeTokenTransfer(
   user: string,
   btcPrice: number | null,
   chain = "mezo",
+  mezoPrice?: number | null,
 ): TreasuryLedgerEvent {
   const txHash = raw.tx_hash ?? raw.transaction_hash ?? "";
   const logIndex = raw.log_index ?? "0";
@@ -225,7 +234,7 @@ export function normalizeTokenTransfer(
   const tokenAmount = parseTokenAmount(rawAmount, decimals);
   const direction = detectDirection(from, to, user);
 
-  const price = resolvePrice({ symbol, exchange_rate: token.exchange_rate }, btcPrice);
+  const price = resolvePrice({ symbol, exchange_rate: token.exchange_rate }, btcPrice, mezoPrice);
   const usdValue = price.usd != null ? tokenAmount * price.usd : null;
 
   const counterparty = direction === "incoming" ? from : direction === "outgoing" ? to : null;
@@ -414,6 +423,7 @@ export interface BuildInput {
   nativeTxs: RawNativeTx[];
   tokenTransfers: RawTokenTransfer[];
   btcPrice: number | null;
+  mezoPrice?: number | null;     // MEZO governance token price from DeFiLlama
   minValueUSD?: number;
   includeUnknownPrice?: boolean; // default true
   nowSec?: number;               // injectable for tests
@@ -447,14 +457,14 @@ export interface MezoActivity {
 
 export function buildMezoActivity(input: BuildInput): MezoActivity {
   const {
-    address, range, rangeDays, nativeTxs, tokenTransfers, btcPrice,
+    address, range, rangeDays, nativeTxs, tokenTransfers, btcPrice, mezoPrice,
     minValueUSD = 1.0, nowSec = Math.floor(Date.now() / 1000),
   } = input;
   const cutoff = nowSec - rangeDays * 86400;
 
   // Normalize everything.
   const rawEvents: TreasuryLedgerEvent[] = [
-    ...tokenTransfers.map(t => normalizeTokenTransfer(t, address, btcPrice)),
+    ...tokenTransfers.map(t => normalizeTokenTransfer(t, address, btcPrice, "mezo", mezoPrice)),
     ...nativeTxs.map(t => normalizeNativeTx(t, address, btcPrice)),
   ];
 
