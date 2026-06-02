@@ -1,11 +1,13 @@
 'use client';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { useAccount } from 'wagmi';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, ArrowRight, RefreshCw, Tag, Eye, EyeOff, TrendingDown, Clock, Shield, Repeat, ArrowLeftRight, Copy, Check, ExternalLink, ArrowDownLeft, ArrowUpRight, AlertTriangle } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
 } from 'recharts';
 import { walletApi, type TransactionCategory, type WalletAnalysis, type WalletTransaction, type TransactionTag } from '@/lib/api';
+import WalletConnect from '@/components/WalletConnect';
 
 const E: [number,number,number,number] = [0.16, 1, 0.3, 1];
 const _rawUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
@@ -303,6 +305,7 @@ function SpendChart({ transactions, emptyNote }: { transactions: WalletTransacti
 
 // ── Main Page ────────────────────────────────────────────────────────────────
 export default function AnalyzePage() {
+  const { address: connectedAddress, isConnected } = useAccount();
   const [input, setInput] = useState('');
   const [range, setRange] = useState<RangeOption>('90d');
   const [loading, setLoading] = useState(false);
@@ -340,6 +343,14 @@ export default function AnalyzePage() {
     setUserTags(prev => ({ ...prev, [hash]: tag }));
   }, []);
 
+  // Auto-run analysis for the connected wallet when the page loads.
+  useEffect(() => {
+    if (!connectedAddress || analysis || loading) return;
+    setInput(connectedAddress);
+    run(connectedAddress);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connectedAddress]);
+
   const visibleTxs = analysis
     ? (showFiltered ? analysis.transactions : analysis.transactions.filter(t => !t.isFiltered))
     : [];
@@ -367,13 +378,14 @@ export default function AnalyzePage() {
   return (
     <div className="min-h-screen" style={{ background: 'var(--bg-base)', color: 'var(--text-primary)' }}>
       {/* Header */}
-      <div className="sticky top-0 z-40 px-6 py-4 flex items-center justify-between"
+      <div className="sticky top-0 z-40 px-6 py-4 flex items-center justify-between gap-4"
         style={{ background: 'rgba(11,11,14,0.85)', backdropFilter: 'blur(16px)', borderBottom: '1px solid var(--border-lo)' }}>
-        <a href="/" className="flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>
+        <a href="/" className="flex items-center gap-2 text-sm font-semibold shrink-0" style={{ color: 'var(--text-secondary)' }}>
           <svg width="24" height="24" viewBox="0 0 64 64" fill="none"><polygon points="4,4 60,4 60,44 20,60 4,60" fill="#F7931A"/><rect x="13" y="13" width="22" height="22" rx="3" fill="#0b0b0b"/></svg>
           <span style={{ color: 'var(--text-primary)' }}>bit</span><span style={{ color: '#F7931A' }}>stream</span>
         </a>
-        <span className="text-xs font-bold uppercase tracking-[0.2em]" style={{ color: '#F7931A' }}>Wallet Analyzer</span>
+        <span className="text-xs font-bold uppercase tracking-[0.2em] hidden sm:block" style={{ color: '#F7931A' }}>Wallet Analyzer</span>
+        <WalletConnect />
       </div>
 
       <div className="mx-auto max-w-5xl px-4 py-10">
@@ -675,10 +687,17 @@ export default function AnalyzePage() {
                         <p className="text-xs mb-4" style={{ color: 'var(--text-secondary)' }}>
                           Lock BTC, mint MUSD, and let the agent handle recurring payments automatically.
                         </p>
-                        <a href="/" className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold"
-                          style={{ background: '#F7931A', color: '#000' }}>
-                          Open Dashboard <ArrowRight className="h-4 w-4" />
-                        </a>
+                        {isConnected ? (
+                          <a href="/" className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold"
+                            style={{ background: '#F7931A', color: '#000' }}>
+                            Open Dashboard <ArrowRight className="h-4 w-4" />
+                          </a>
+                        ) : (
+                          <div className="flex flex-col items-center gap-2">
+                            <WalletConnect />
+                            <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Connect your wallet to set up automation</p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}

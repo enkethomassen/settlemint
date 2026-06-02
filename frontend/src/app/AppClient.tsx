@@ -474,8 +474,11 @@ function WalletSummaryBar({ address }: { address: string }) {
 
   if (loading) {
     return (
-      <div className="grid grid-cols-3 gap-3">
-        {[1,2,3].map(i => <div key={i} className="h-14 rounded-xl animate-pulse" style={{ background: 'var(--bg-raised)' }} />)}
+      <div className="rounded-2xl p-5 space-y-4" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-base)' }}>
+        <div className="h-4 w-40 rounded animate-pulse" style={{ background: 'var(--bg-raised)' }} />
+        <div className="grid grid-cols-3 gap-3">
+          {[1,2,3].map(i => <div key={i} className="h-14 rounded-xl animate-pulse" style={{ background: 'var(--bg-raised)' }} />)}
+        </div>
       </div>
     );
   }
@@ -492,24 +495,60 @@ function WalletSummaryBar({ address }: { address: string }) {
       : '$0';
 
   const top = summary.topRecipients?.[0];
-  const topLabel = top
-    ? `${top.address.slice(0, 6)}…${top.address.slice(-4)}`
-    : '—';
+  const topLabel = top ? `${top.address.slice(0, 6)}…${top.address.slice(-4)}` : '—';
+
+  // Rule-based insights from real data
+  const insights: string[] = [];
+  if (summary.monthlyBurn > 0 && summary.runway !== '∞')
+    insights.push(`At current burn rate, runway is ${summary.runway}.`);
+  if (summary.recurringPayments.length > 0)
+    insights.push(`${summary.recurringPayments.length} recurring payment pattern${summary.recurringPayments.length > 1 ? 's' : ''} detected — good candidates to automate.`);
+  if (summary.totalInflow > summary.totalOutflow && summary.totalInflow > 0)
+    insights.push(`Net positive cashflow this period: +${fmtUSD(summary.totalInflow - summary.totalOutflow)}.`);
+  if (top && top.totalUSD > 0)
+    insights.push(`Largest recipient ${topLabel} received ${fmtUSD(top.totalUSD)} across ${top.count} transactions.`);
+  if (summary.spendByCategory[0])
+    insights.push(`Top spend category: ${summary.spendByCategory[0].category} at ${summary.spendByCategory[0].percentage}% of outflows.`);
 
   return (
-    <div className="grid grid-cols-3 gap-3">
-      {[
-        { label: 'Monthly Burn (30d)', value: burnLabel, sub: 'avg outflow' },
-        { label: 'Runway', value: summary.runway, sub: 'at current rate' },
-        { label: 'Top Recipient', value: topLabel, sub: top ? `${top.count} txs` : 'no outflows' },
-      ].map(s => (
-        <div key={s.label} className="rounded-xl px-4 py-3"
-          style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-lo)' }}>
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] mb-1" style={{ color: 'var(--text-muted)' }}>{s.label}</p>
-          <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{s.value}</p>
-          <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>{s.sub}</p>
+    <div className="rounded-2xl p-5 space-y-4" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-base)' }}>
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--text-muted)' }}>
+          Cashflow Analysis · Last 30 days
+        </p>
+        <a href="/analyze" className="text-xs font-semibold flex items-center gap-1"
+          style={{ color: '#F7931A' }}>
+          Full analysis <ChevronRight size={11} />
+        </a>
+      </div>
+
+      {/* Key metrics */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { label: 'Monthly Burn', value: burnLabel, sub: 'avg outflow' },
+          { label: 'Runway', value: summary.runway, sub: 'at current rate' },
+          { label: 'Top Recipient', value: topLabel, sub: top ? `${top.count} txs · ${fmtUSD(top.totalUSD)}` : 'no outflows' },
+        ].map(s => (
+          <div key={s.label} className="rounded-xl px-4 py-3"
+            style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-lo)' }}>
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] mb-1" style={{ color: 'var(--text-muted)' }}>{s.label}</p>
+            <p className="text-sm font-bold truncate" style={{ color: 'var(--text-primary)' }}>{s.value}</p>
+            <p className="text-[10px] mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>{s.sub}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Insights */}
+      {insights.length > 0 && (
+        <div className="space-y-1.5 pt-1">
+          {insights.slice(0, 3).map((ins, i) => (
+            <div key={i} className="flex items-start gap-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
+              <span className="mt-1 h-1.5 w-1.5 rounded-full shrink-0" style={{ background: '#F7931A' }} />
+              {ins}
+            </div>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   );
 }
