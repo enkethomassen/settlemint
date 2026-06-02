@@ -163,6 +163,8 @@ export type TransactionCategory =
   | "payment" | "subscription" | "yield" | "swap"
   | "gas" | "transfer" | "stablecoin" | "nft" | "unknown";
 
+export type TransferDirection = "incoming" | "outgoing" | "self" | "unknown";
+
 export interface WalletTransaction {
   hash: string;
   timestamp: number;
@@ -177,6 +179,16 @@ export interface WalletTransaction {
   userTag?: string;
   predictedTag?: string;
   confidence?: number;
+  // ── token-denominated display (USD optional, token units mandatory) ──
+  direction?: TransferDirection;
+  counterparty?: string | null;
+  kind?: string;
+  tokenSymbol?: string;
+  tokenAddress?: string;
+  usdAvailable?: boolean;
+  usdPriceSource?: string;
+  displayValue?: string;       // e.g. "42.72 MEZO"
+  displayUsd?: string | null;  // e.g. "$42.72" | null when price unavailable
 }
 
 export interface RecurringPayment {
@@ -185,11 +197,14 @@ export interface RecurringPayment {
   amount: number;
   amountUSD: number;
   token: string;
-  frequency: "daily" | "weekly" | "monthly" | "irregular";
+  frequency: "daily" | "weekly" | "biweekly" | "monthly" | "irregular";
   confidence: number;
   nextExpected?: string;
   occurrences: number;
   totalSpent: number;
+  totalToken?: number;
+  usdAvailable?: boolean;
+  status?: "possible" | "confirmed";
 }
 
 export interface CategoryBreakdown {
@@ -211,6 +226,7 @@ export interface WalletAnalysis {
   totalOutflow: number;
   totalInflow: number;
   monthlyBurn: number;
+  monthlyBurnTokens?: Record<string, number>;
   runway: string;
   reserveScore: number;
   transactions: WalletTransaction[];
@@ -218,7 +234,15 @@ export interface WalletAnalysis {
   spendByCategory: CategoryBreakdown[];
   swapActivity: SwapActivity;
   aiInsights: string[];
-  topRecipients: { address: string; label?: string; totalUSD: number; count: number }[];
+  topRecipients: { address: string; label?: string; totalUSD: number; totalToken?: number; token?: string; count: number }[];
+  // ── extended treasury fields ──
+  tokenOutflows?: Record<string, number>;
+  tokenInflows?: Record<string, number>;
+  priceWarnings?: string[];
+  nativeTransactionCount?: number;
+  tokenTransferCount?: number;
+  ledgerEventCount?: number;
+  skippedCount?: number;
 }
 
 export interface TransactionTag {

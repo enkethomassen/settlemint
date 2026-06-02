@@ -1,7 +1,7 @@
 'use client';
 import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, ArrowRight, RefreshCw, Tag, Eye, EyeOff, TrendingDown, Clock, Shield, Repeat, ArrowLeftRight } from 'lucide-react';
+import { Search, ArrowRight, RefreshCw, Tag, Eye, EyeOff, TrendingDown, Clock, Shield, Repeat, ArrowLeftRight, Copy, Check, ExternalLink, ArrowDownLeft, ArrowUpRight, AlertTriangle } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
 } from 'recharts';
@@ -32,6 +32,30 @@ function fmtUSD(n: number) {
 
 function fmtDate(ts: number) {
   return new Date(ts * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+}
+
+const EXPLORER = 'https://explorer.mezo.org';
+function txUrl(hash: string) { return `${EXPLORER}/tx/${hash}`; }
+
+function fmtTokenAmt(amount: number, symbol: string) {
+  const abs = Math.abs(amount);
+  const decimals = abs >= 1 ? 4 : abs >= 0.0001 ? 6 : 8;
+  const s = amount.toFixed(decimals).replace(/\.?0+$/, '');
+  return `${s || '0'} ${symbol}`;
+}
+
+// Copy-to-clipboard button used for truncated addresses / hashes.
+function CopyButton({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(value); setCopied(true); setTimeout(() => setCopied(false), 1200); }}
+      className="opacity-60 hover:opacity-100 transition-opacity"
+      title="Copy address"
+      style={{ color: 'var(--text-muted)' }}>
+      {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+    </button>
+  );
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -189,27 +213,47 @@ function TxRow({ tx, walletAddress, tag, onTagged }: {
   tx: WalletTransaction; walletAddress: string; tag?: string; onTagged: (hash: string, tag: string) => void;
 }) {
   const color = CATEGORY_COLORS[tx.category] ?? '#6b6784';
+  const dir = tx.direction ?? (tx.from?.toLowerCase() === walletAddress.toLowerCase() ? 'outgoing' : 'incoming');
+  const isIn = dir === 'incoming';
+  const sign = isIn ? '+' : dir === 'outgoing' ? '−' : '';
+  const dirColor = isIn ? '#22c55e' : 'var(--text-primary)';
+  const counterparty = tx.counterparty ?? tx.to;
+  // Token units are mandatory; USD only when actually known (never fake $0.00).
+  const tokenLine = tx.displayValue ?? (tx.amount > 0 ? fmtTokenAmt(tx.amount, tx.tokenSymbol ?? tx.token) : null);
+  const usdLine = tx.usdAvailable === false
+    ? 'USD unavailable'
+    : tx.displayUsd ?? (tx.amountUSD > 0 ? fmtUSD(tx.amountUSD) : tx.kind === 'contract_call' ? 'contract call' : 'USD unavailable');
   return (
     <div className="flex items-center gap-3 px-4 py-3 rounded-xl transition-colors hover:bg-white/[0.02]"
       style={{ borderBottom: '1px solid var(--border-void)' }}>
+      <div className="flex h-7 w-7 items-center justify-center rounded-full shrink-0"
+        style={{ background: isIn ? 'rgba(34,197,94,0.12)' : 'rgba(247,147,26,0.10)' }}>
+        {isIn ? <ArrowDownLeft className="h-3.5 w-3.5" style={{ color: '#22c55e' }} />
+              : <ArrowUpRight className="h-3.5 w-3.5" style={{ color: '#F7931A' }} />}
+      </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="font-mono text-xs" style={{ color: 'var(--text-tertiary)' }}>{shortAddr(tx.hash)}</span>
+          <a href={txUrl(tx.hash)} target="_blank" rel="noreferrer"
+            className="font-mono text-xs flex items-center gap-1 hover:underline" style={{ color: 'var(--text-tertiary)' }}>
+            {shortAddr(tx.hash)}<ExternalLink className="h-2.5 w-2.5 opacity-60" />
+          </a>
           <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize"
             style={{ background: `${color}18`, color, border: `1px solid ${color}30` }}>
             {tx.category}
           </span>
         </div>
-        <div className="mt-0.5 text-xs" style={{ color: 'var(--text-muted)' }}>
-          → {shortAddr(tx.to)} · {fmtDate(tx.timestamp)}
+        <div className="mt-0.5 flex items-center gap-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
+          <span>{isIn ? 'from' : 'to'} {shortAddr(counterparty)}</span>
+          <CopyButton value={counterparty} />
+          <span>· {fmtDate(tx.timestamp)}</span>
         </div>
       </div>
       <div className="text-right shrink-0">
-        <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-          {tx.amountUSD > 0 ? fmtUSD(tx.amountUSD) : tx.amount > 0 ? fmtUSD(0) : <span style={{ color: 'var(--text-muted)' }}>contract call</span>}
+        <div className="text-sm font-semibold font-mono" style={{ color: dirColor }}>
+          {tokenLine ? `${sign}${tokenLine}` : <span style={{ color: 'var(--text-muted)' }}>—</span>}
         </div>
         <div className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
-          {tx.amount > 0 ? `${tx.amount.toFixed(6)} ${tx.token}` : ''}
+          {usdLine}
         </div>
       </div>
       <TagPopover tx={tx} walletAddress={walletAddress} existingTag={tag}
@@ -220,7 +264,7 @@ function TxRow({ tx, walletAddress, tag, onTagged }: {
 
 
 // ── Spend Chart ──────────────────────────────────────────────────────────────
-function SpendChart({ transactions }: { transactions: WalletTransaction[] }) {
+function SpendChart({ transactions, emptyNote }: { transactions: WalletTransaction[]; emptyNote?: string }) {
   // Group by week. Swaps are excluded — they have their own Swap Activity
   // section and would otherwise distort the cash-flow chart (Bug 1).
   const buckets: Record<string, number> = {};
@@ -235,8 +279,8 @@ function SpendChart({ transactions }: { transactions: WalletTransaction[] }) {
     .map(([date, usd]) => ({ date, usd: Math.round(usd * 100) / 100 }));
 
   if (data.length === 0) return (
-    <div className="flex items-center justify-center h-32 text-sm" style={{ color: 'var(--text-muted)' }}>
-      No spend data to chart
+    <div className="flex items-center justify-center h-32 text-center text-sm px-4" style={{ color: 'var(--text-muted)' }}>
+      {emptyNote ?? 'No USD-priced spend in this range'}
     </div>
   );
 
@@ -300,6 +344,25 @@ export default function AnalyzePage() {
     ? (showFiltered ? analysis.transactions : analysis.transactions.filter(t => !t.isFiltered))
     : [];
   const filteredCount = analysis ? analysis.transactions.filter(t => t.isFiltered).length : 0;
+
+  // Monthly burn: prefer known-USD outflow. When USD price is unavailable but
+  // token outflows exist, show a token-denominated burn instead of a misleading $0.00.
+  const tokenBurn = analysis?.monthlyBurnTokens ?? {};
+  const tokenBurnEntries = Object.entries(tokenBurn).filter(([, v]) => v > 0);
+  let burnValue = '$0.00';
+  let burnSub = 'avg outflow/month';
+  if (analysis) {
+    if (analysis.monthlyBurn > 0) {
+      burnValue = fmtUSD(analysis.monthlyBurn);
+      if (tokenBurnEntries.length > 0) {
+        burnSub = `+ ${tokenBurnEntries.map(([s, v]) => fmtTokenAmt(v, s)).join(', ')}/mo (no USD price)`;
+      }
+    } else if (tokenBurnEntries.length > 0) {
+      const [sym, amt] = tokenBurnEntries.sort((a, b) => b[1] - a[1])[0];
+      burnValue = `${fmtTokenAmt(amt, sym)}`;
+      burnSub = tokenBurnEntries.length > 1 ? 'avg token outflow/month · USD unavailable' : 'avg/month · USD unavailable';
+    }
+  }
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--bg-base)', color: 'var(--text-primary)' }}>
@@ -388,9 +451,20 @@ export default function AnalyzePage() {
                 <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Range: {analysis.range}</span>
               </div>
 
+              {/* Price warnings — never silently swallow "price unavailable" */}
+              {(analysis.priceWarnings?.length ?? 0) > 0 && (
+                <div className="rounded-2xl px-4 py-3 flex items-start gap-2.5 text-xs"
+                  style={{ background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.22)', color: '#f59e0b' }}>
+                  <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <div className="space-y-0.5">
+                    {analysis.priceWarnings!.map((w, i) => <div key={i}>{w}</div>)}
+                  </div>
+                </div>
+              )}
+
               {/* Stats row */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <StatCard label="Monthly Burn" value={fmtUSD(analysis.monthlyBurn)} sub="avg outflow/month" accent="#F7931A" />
+                <StatCard label="Monthly Burn" value={burnValue} sub={burnSub} accent="#F7931A" />
                 <StatCard label="Recurring" value={String(analysis.recurringPayments.length)} sub="patterns detected" accent="#00c9a7" />
                 <StatCard label="Runway" value={analysis.runway} sub="at current burn rate" accent="#22c55e" />
                 <StatCard label="Reserve Score" value={`${analysis.reserveScore}/100`} sub="liquidity health" accent="#a78bfa" />
@@ -400,19 +474,40 @@ export default function AnalyzePage() {
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="rounded-2xl p-5" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-base)' }}>
                   <p className="text-xs font-bold uppercase tracking-[0.18em] mb-4" style={{ color: 'var(--text-muted)' }}>Spend Over Time</p>
-                  <SpendChart transactions={analysis.transactions} />
+                  <SpendChart
+                    transactions={analysis.transactions}
+                    emptyNote={tokenBurnEntries.length > 0
+                      ? `USD pricing unavailable for ${tokenBurnEntries.map(([s]) => s).join(', ')}. Showing token-denominated activity below.`
+                      : undefined} />
                 </div>
                 <div className="rounded-2xl p-5" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-base)' }}>
                   <div className="flex items-center justify-between mb-4">
                     <p className="text-xs font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--text-muted)' }}>Spend by Category</p>
-                    <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{fmtUSD(analysis.totalOutflow)}</span>
+                    <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                      {analysis.totalOutflow > 0
+                        ? fmtUSD(analysis.totalOutflow)
+                        : Object.entries(analysis.tokenOutflows ?? {}).map(([s, v]) => fmtTokenAmt(v, s)).join(' · ') || fmtUSD(0)}
+                    </span>
                   </div>
                   <div className="space-y-3">
                     {analysis.spendByCategory.map(c => (
                       <CategoryBar key={c.category} {...c} />
                     ))}
-                    {analysis.spendByCategory.length === 0 && (
+                    {analysis.spendByCategory.length === 0 && tokenBurnEntries.length === 0 && (
                       <p className="text-xs" style={{ color: 'var(--text-muted)' }}>No category data</p>
+                    )}
+                    {analysis.spendByCategory.length === 0 && tokenBurnEntries.length > 0 && (
+                      <div className="space-y-2">
+                        {Object.entries(analysis.tokenOutflows ?? {}).map(([sym, amt]) => (
+                          <div key={sym} className="flex items-center justify-between text-xs">
+                            <span style={{ color: 'var(--text-secondary)' }}>{sym} transfers</span>
+                            <span className="font-mono" style={{ color: 'var(--text-primary)' }}>{fmtTokenAmt(amt, sym)}</span>
+                          </div>
+                        ))}
+                        <p className="text-[11px] pt-1" style={{ color: 'var(--text-muted)' }}>
+                          USD pricing unavailable — token-denominated outflow shown.
+                        </p>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -485,8 +580,8 @@ export default function AnalyzePage() {
                         )}
                       </div>
                       <div className="space-y-0.5">
-                        {visibleTxs.slice(0, 50).map(tx => (
-                          <TxRow key={tx.hash} tx={tx} walletAddress={analysis.address}
+                        {visibleTxs.slice(0, 100).map((tx, i) => (
+                          <TxRow key={`${tx.hash}-${i}`} tx={tx} walletAddress={analysis.address}
                             tag={userTags[tx.hash]} onTagged={handleTag} />
                         ))}
                         {visibleTxs.length === 0 && (
@@ -513,20 +608,32 @@ export default function AnalyzePage() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                                {r.toLabel ?? shortAddr(r.toAddress)}
+                              <span className="text-sm font-semibold font-mono" style={{ color: 'var(--text-primary)' }}>
+                                {r.toLabel ? shortAddr(r.toLabel) : shortAddr(r.toAddress)}
                               </span>
+                              <CopyButton value={r.toAddress} />
                               <span className="rounded-full px-2 py-0.5 text-[10px] capitalize"
                                 style={{ background: 'rgba(0,201,167,0.12)', color: '#00c9a7', border: '1px solid rgba(0,201,167,0.24)' }}>
                                 {r.frequency}
                               </span>
+                              {r.status && (
+                                <span className="rounded-full px-2 py-0.5 text-[10px] capitalize"
+                                  style={{ background: r.status === 'confirmed' ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.12)', color: r.status === 'confirmed' ? '#22c55e' : '#f59e0b' }}>
+                                  {r.status}
+                                </span>
+                              )}
                             </div>
                             <div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                              {r.occurrences} occurrences · {fmtUSD(r.totalSpent)} total
+                              {r.occurrences} occurrences · {r.usdAvailable !== false && r.totalSpent > 0
+                                ? `${fmtUSD(r.totalSpent)} total`
+                                : `${fmtTokenAmt(r.totalToken ?? 0, r.token)} total`}
+                              {r.nextExpected && ` · next ~${new Date(r.nextExpected).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
                             </div>
                           </div>
                           <div className="text-right shrink-0">
-                            <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{fmtUSD(r.amountUSD)}</div>
+                            <div className="text-sm font-semibold font-mono" style={{ color: 'var(--text-primary)' }}>
+                              {r.usdAvailable !== false && r.amountUSD > 0 ? fmtUSD(r.amountUSD) : fmtTokenAmt(r.amount, r.token)}
+                            </div>
                             <div className="text-xs" style={{ color: 'var(--text-muted)' }}>per {r.frequency.replace('ly','')}</div>
                           </div>
                           <div className="text-right shrink-0">
